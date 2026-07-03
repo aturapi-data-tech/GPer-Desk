@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(command -v rsync)",
+      "Bash(rsync -a --exclude='.git/' /home/avro/Desktop/LARAVEL/sirus-php82/ /home/avro/Desktop/LARAVEL/GPer-Desk/)",
+      "Bash(php -v)",
+      "Bash(php artisan *)",
+      "Bash(git -C /home/avro/Desktop/LARAVEL/GPer-Desk log --oneline -1)",
+      "Bash(git -C /home/avro/Desktop/LARAVEL/GPer-Desk status -s)",
+      "Bash(grep -nA30 \"'oracle'\" config/database.php)",
+      "Bash(grep -nB2 -iE \"oracle|server_version|max_name_len|mindray\")",
+      "Bash(awk '/[\\\\x27\"]oracle[\\\\x27\"] *=>/{f=1} f{print NR\": \"$0} /^        \\\\],/{if\\(f\\){c++; if\\(c>=1 && f\\) exit}}' config/database.php)",
+      "Bash(cd *)",
+      "Bash(find resources/views/pages/master/master-others -type f)",
+      "Bash(find resources/views/pages/master/master-kelas-rawat -type f)",
+      "Bash(grep -vE \"^\\\\s*//|^\\\\s*$\" routes/console.php)",
+      "Bash(echo \"=== exit: $? ===\")",
+      "Bash(grep -niE \"DB::table\\\\\\('|v\\\\\\\\\\\\$|gv\\\\\\\\\\\\$|select|karyawan|kasir|lov\" resources/views/pages/database-monitor/monitoring-dashboard/monitoring-dashboard.blade.php)",
+      "Read(//home/avro/Desktop/LARAVEL/**)",
+      "Bash(mkdir -p GPer-Desk/resources/views/pages/database-monitor/user-control)",
+      "Bash(cp sirus-php82/resources/views/pages/database-monitor/user-control/user-control.blade.php sirus-php82/resources/views/pages/database-monitor/user-control/user-control-actions.blade.php GPer-Desk/resources/views/pages/database-monitor/user-control/)",
+      "Bash(php -l routes/web.php)",
+      "Bash(php -l app/Services/AppMenu.php)",
+      "Bash(php -l \"resources/views/pages/transaksi/my-tickets/⚡my-tickets.blade.php\")",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(grep -iE '\\(^|/\\)\\(vendor|node_modules\\)/|\\\\.env$|/public/build/|storage/.*\\\\.key')"
+    ]
+  }
+}

@@ -1,0 +1,282 @@
+<?php
+
+use Livewire\Component;
+use Livewire\WithPagination;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\On;
+use Illuminate\Support\Facades\DB;
+
+new class extends Component {
+    use WithPagination;
+
+    public string $searchKeyword = '';
+    public string $filterGuard = '';
+    public int $itemsPerPage = 10;
+
+    public function updatedSearchKeyword(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedItemsPerPage(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterGuard(): void
+    {
+        $this->resetPage();
+    }
+
+    public function openCreate(): void
+    {
+        $this->dispatch('roleControl.openCreate');
+    }
+
+    public function openEdit(int $roleId): void
+    {
+        $this->dispatch('roleControl.openEdit', roleId: $roleId);
+    }
+
+    public function requestDelete(int $roleId): void
+    {
+        $this->dispatch('roleControl.requestDelete', roleId: $roleId);
+    }
+
+    #[On('refresh-after-role-control.saved')]
+    public function refreshAfterSaved(): void
+    {
+        $this->resetPage();
+    }
+
+    #[Computed]
+    public function baseQuery()
+    {
+        $searchKeyword = trim($this->searchKeyword);
+
+        $query = DB::table('roles as r')->select('r.id', 'r.name', 'r.guard_name', DB::raw("TO_CHAR(r.created_at, 'dd/mm/yyyy HH24:MI:SS') as created_at"), DB::raw("TO_CHAR(r.updated_at, 'dd/mm/yyyy HH24:MI:SS') as updated_at"))->orderBy('r.name', 'asc');
+
+        if ($this->filterGuard !== '') {
+            $query->where('r.guard_name', $this->filterGuard);
+        }
+
+        if ($searchKeyword !== '') {
+            $upper = mb_strtoupper($searchKeyword);
+            $query->where(function ($q) use ($upper, $searchKeyword) {
+                if (ctype_digit($searchKeyword)) {
+                    $q->orWhere('r.id', $searchKeyword);
+                }
+                $q->orWhereRaw('UPPER(r.name) LIKE ?', ["%{$upper}%"])->orWhereRaw('UPPER(r.guard_name) LIKE ?', ["%{$upper}%"]);
+            });
+        }
+
+        return $query;
+    }
+
+    #[Computed]
+    public function rows()
+    {
+        $roles = $this->baseQuery()->paginate($this->itemsPerPage);
+
+        foreach ($roles as $role) {
+            $role->permission_list = DB::table('role_has_permissions')->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')->where('role_has_permissions.role_id', $role->id)->pluck('permissions.name')->all();
+
+            $role->user_count = DB::table('model_has_roles')->where('role_id', $role->id)->where('model_type', \App\Models\User::class)->count();
+        }
+
+        return $roles;
+    }
+
+    #[Computed]
+    public function guardList(): array
+    {
+        return DB::table('roles')->select('guard_name')->distinct()->orderBy('guard_name')->pluck('guard_name')->all();
+    }
+
+    public function roleBadgeClass(string $role): string
+    {
+        $base = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium';
+        $color = match ($role) {
+            // Level 4 — Super User
+            'Admin'                => 'bg-red-100     text-red-800     dark:bg-red-900/30      dark:text-red-200',
+
+            // Level 3 — Manager
+            'Manager Medis'        => 'bg-rose-100    text-rose-800    dark:bg-rose-900/30     dark:text-rose-200',
+            'Manager Umum'         => 'bg-orange-100  text-orange-800  dark:bg-orange-900/30   dark:text-orange-200',
+
+            // Level 2 — Supervisor
+            'Supervisor Penunjang' => 'bg-indigo-100  text-indigo-800  dark:bg-indigo-900/30   dark:text-indigo-200',
+            'Supervisor Tu'        => 'bg-sky-100     text-sky-800     dark:bg-sky-900/30      dark:text-sky-200',
+
+            // Level 1 — Fungsional
+            'Dokter'               => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30  dark:text-emerald-200',
+            'Perawat'              => 'bg-blue-100    text-blue-800    dark:bg-blue-900/30     dark:text-blue-200',
+            'Apoteker'             => 'bg-amber-100   text-amber-800   dark:bg-amber-900/30    dark:text-amber-200',
+            'Gizi'                 => 'bg-teal-100    text-teal-800    dark:bg-teal-900/30     dark:text-teal-200',
+            'Laboratorium'         => 'bg-cyan-100    text-cyan-800    dark:bg-cyan-900/30     dark:text-cyan-200',
+            'Radiologi'            => 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/30  dark:text-fuchsia-200',
+            'Casemix'              => 'bg-pink-100    text-pink-800    dark:bg-pink-900/30     dark:text-pink-200',
+            'Mr'                   => 'bg-violet-100  text-violet-800  dark:bg-violet-900/30   dark:text-violet-200',
+            'Tu'                   => 'bg-surface-soft    text-body    dark:bg-gray-800        dark:text-gray-200',
+            'Gudang Obat'          => 'bg-lime-100    text-lime-800    dark:bg-lime-900/30     dark:text-lime-200',
+            'Gudang Non Medis'     => 'bg-yellow-100  text-yellow-800  dark:bg-yellow-900/30   dark:text-yellow-200',
+
+            default                => 'bg-slate-100   text-slate-800   dark:bg-slate-800       dark:text-slate-200',
+        };
+        return "{$base} {$color}";
+    }
+};
+?>
+
+<div>
+
+    <x-page-title
+        title="Role Control"
+        subtitle="Kelola role &amp; permission sistem" />
+
+    <div class="w-full h-[calc(100vh-5rem)] flex flex-col bg-surface-soft dark:bg-gray-800">
+        <div class="flex flex-col flex-1 min-h-0 px-6 pt-2 pb-6">
+
+            {{-- TOOLBAR --}}
+            <div
+                class="sticky z-30 px-4 py-3 bg-surface-soft border-b border-hairline top-20 dark:bg-gray-900 dark:border-gray-700">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+
+                    <div class="flex flex-wrap items-end gap-2">
+                        <div class="w-full lg:w-72">
+                            <x-input-label for="searchKeyword" value="Cari Role" class="sr-only" />
+                            <x-text-input id="searchKeyword" type="text"
+                                wire:model.live.debounce.300ms="searchKeyword" placeholder="Cari nama / guard..."
+                                class="block w-full" />
+                        </div>
+
+                        {{-- Filter guard --}}
+                        <div class="flex flex-wrap gap-1.5">
+                            <button type="button" wire:click="$set('filterGuard', '')"
+                                class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium transition border
+                                    {{ $filterGuard === ''
+                                        ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200'
+                                        : 'bg-canvas text-muted border-hairline hover:border-gray-400 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700 dark:hover:border-gray-500' }}">
+                                Semua Guard
+                            </button>
+                            @foreach ($this->guardList as $g)
+                                <button type="button" wire:click="$set('filterGuard', '{{ $g }}')"
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border
+                                        {{ $filterGuard === $g
+                                            ? 'bg-brand-green text-white border-brand-green dark:bg-brand-lime dark:text-gray-900 dark:border-brand-lime'
+                                            : 'bg-canvas text-muted border-hairline hover:border-gray-400 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700 dark:hover:border-gray-500' }}">
+                                    {{ $g }}
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-end gap-2 shrink-0">
+                        <div class="w-28">
+                            <x-input-label for="itemsPerPage" value="Per halaman" class="sr-only" />
+                            <x-select-input id="itemsPerPage" wire:model.live="itemsPerPage">
+                                <option value="5">5</option>
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </x-select-input>
+                        </div>
+                        <x-primary-button type="button" wire:click="openCreate">
+                            + Tambah Role
+                        </x-primary-button>
+                    </div>
+                </div>
+            </div>
+
+            {{-- TABLE --}}
+            <div
+                class="mt-4 flex flex-col flex-1 min-h-0 bg-canvas border border-hairline shadow-sm rounded-2xl dark:border-gray-700 dark:bg-gray-900">
+                <div class="flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-t-2xl">
+                    <table class="min-w-full text-sm">
+                        <thead class="sticky top-0 z-10 text-muted bg-surface-card dark:bg-gray-800 dark:text-gray-200">
+                            <tr class="text-left">
+                                <th class="px-4 py-3 font-semibold">ID</th>
+                                <th class="px-4 py-3 font-semibold">Nama Role</th>
+                                <th class="px-4 py-3 font-semibold">Guard</th>
+                                <th class="px-4 py-3 font-semibold">Permissions</th>
+                                <th class="px-4 py-3 font-semibold">Jml User</th>
+                                <th class="px-4 py-3 font-semibold">Dibuat</th>
+                                <th class="px-4 py-3 font-semibold">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-body divide-y divide-hairline dark:divide-gray-700 dark:text-gray-200">
+                            @forelse($this->rows as $row)
+                                <tr wire:key="role-row-{{ $row->id }}"
+                                    class="hover:bg-surface-soft dark:hover:bg-gray-800/60">
+
+                                    <td class="px-4 py-3 text-xs font-mono text-muted">{{ $row->id }}</td>
+
+                                    <td class="px-4 py-3">
+                                        <span class="{{ $this->roleBadgeClass($row->name) }}">{{ $row->name }}</span>
+                                    </td>
+
+                                    <td class="px-4 py-3">
+                                        <x-badge variant="alternative">{{ $row->guard_name }}</x-badge>
+                                    </td>
+
+                                    <td class="px-4 py-3">
+                                        <div class="flex flex-wrap gap-1">
+                                            @forelse($row->permission_list as $p)
+                                                <span
+                                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                                    {{ $p }}
+                                                </span>
+                                            @empty
+                                                <span class="text-xs italic text-muted-soft">Tanpa permission</span>
+                                            @endforelse
+                                        </div>
+                                    </td>
+
+                                    <td class="px-4 py-3">
+                                        @if ($row->user_count > 0)
+                                            <x-badge variant="success">{{ $row->user_count }} user</x-badge>
+                                        @else
+                                            <span class="text-muted-soft">—</span>
+                                        @endif
+                                    </td>
+
+                                    <td class="px-4 py-3 text-xs text-muted">{{ $row->created_at ?? '-' }}</td>
+
+                                    <td class="px-4 py-3">
+                                        <div class="flex flex-wrap gap-2">
+                                            <x-secondary-button type="button"
+                                                wire:click="openEdit({{ $row->id }})" class="px-2 py-1 text-xs">
+                                                Edit
+                                            </x-secondary-button>
+
+                                            <x-confirm-button variant="danger" :action="'requestDelete(' . $row->id . ')'" title="Hapus Role"
+                                                message="Yakin hapus role {{ $row->name }}? Role yang masih dipakai user tidak bisa dihapus."
+                                                confirmText="Ya, hapus" cancelText="Batal" class="px-2 py-1 text-xs">
+                                                Hapus
+                                            </x-confirm-button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="px-4 py-10 text-center text-muted dark:text-gray-400">
+                                        Data role belum ada.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <div
+                    class="sticky bottom-0 z-10 px-4 py-3 bg-canvas border-t border-hairline rounded-b-2xl dark:bg-gray-900 dark:border-gray-700">
+                    {{ $this->rows->links() }}
+                </div>
+            </div>
+
+            <livewire:pages::database-monitor.role-control.role-control-actions wire:key="role-control-actions" />
+
+        </div>
+    </div>
+</div>
