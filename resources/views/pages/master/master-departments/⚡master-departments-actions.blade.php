@@ -20,6 +20,7 @@ new class extends Component {
         'head_name'   => '',
         'description' => '',
         'is_active'   => 1,
+        'is_sector'   => 0,
     ];
 
     public function mount(): void { $this->registerAreas(['modal']); }
@@ -50,6 +51,7 @@ new class extends Component {
             'head_name'   => (string) ($row->head_name ?? ''),
             'description' => (string) ($row->description ?? ''),
             'is_active'   => (int) $row->is_active,
+            'is_sector'   => (int) ($row->is_sector ?? 0),
         ];
 
         $this->incrementVersion('modal');
@@ -90,6 +92,7 @@ new class extends Component {
             'form.head_name'   => 'nullable|string|max:100',
             'form.description' => 'nullable|string|max:1000',
             'form.is_active'   => 'required|boolean',
+            'form.is_sector'   => 'required|boolean',
         ];
 
         $messages = [
@@ -104,6 +107,7 @@ new class extends Component {
             'form.head_name'   => 'Kepala Unit',
             'form.description' => 'Deskripsi',
             'form.is_active'   => 'Status',
+            'form.is_sector'   => 'Sektor Penanganan',
         ];
 
         $this->validate($rules, $messages, $attributes);
@@ -114,6 +118,7 @@ new class extends Component {
             'head_name'   => $this->form['head_name'] !== '' ? trim($this->form['head_name']) : null,
             'description' => $this->form['description'] !== '' ? trim($this->form['description']) : null,
             'is_active'   => (int) $this->form['is_active'],
+            'is_sector'   => (int) $this->form['is_sector'],
             'updated_at'  => now(),
         ];
 
@@ -137,7 +142,7 @@ new class extends Component {
 
     private function resetForm(): void
     {
-        $this->form = ['name' => '', 'code' => '', 'head_name' => '', 'description' => '', 'is_active' => 1];
+        $this->form = ['name' => '', 'code' => '', 'head_name' => '', 'description' => '', 'is_active' => 1, 'is_sector' => 0];
         $this->resetValidation();
     }
 };
@@ -226,6 +231,16 @@ new class extends Component {
                                 </x-select-input>
                                 <x-input-error :messages="$errors->get('form.is_active')" class="mt-1" />
                             </div>
+                        </div>
+
+                        <div>
+                            <x-input-label value="Sektor Penanganan?" />
+                            <x-select-input wire:model.live="form.is_sector" class="w-full mt-1">
+                                <option value="0">Bukan — departemen biasa (asal pelapor)</option>
+                                <option value="1">Ya — sektor penanganan tiket (mis. IT / CSSD / IPS)</option>
+                            </x-select-input>
+                            <x-input-error :messages="$errors->get('form.is_sector')" class="mt-1" />
+                            <p class="mt-1 text-xs text-muted dark:text-gray-400">Jika "Ya", departemen ini muncul sebagai pilihan <strong>Sektor Tujuan</strong> saat pelapor membuat tiket.</p>
                         </div>
 
                         <div>

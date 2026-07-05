@@ -67,10 +67,12 @@ new class extends Component {
             ->leftJoin('priorities as p', 'p.id', '=', 't.priority_id')
             ->leftJoin('ticket_statuses as s', 's.id', '=', 't.status_id')
             ->leftJoin('users as u', 'u.id', '=', 't.technician_id')
+            ->leftJoin('departments as sec', 'sec.id', '=', 't.sector_id')
             ->where('t.reported_by', auth()->id())
             ->select(
                 't.id', 't.ticket_no', 't.title', 't.status_id',
                 'c.name as category',
+                'sec.name as sector',
                 'p.name as priority', 'p.color as priority_color',
                 's.name as status', 's.color as status_color', 's.is_closed',
                 'u.name as technician',
@@ -157,83 +159,24 @@ new class extends Component {
                 </div>
             </div>
 
-            {{-- TABLE WRAPPER --}}
-            <div class="mt-4 flex flex-col flex-1 min-h-0 bg-canvas border border-hairline shadow-sm rounded-2xl dark:border-gray-700 dark:bg-gray-900">
-                <div class="flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-t-2xl">
-                    <table class="ds-table">
-                        <thead class="sticky top-0 z-10">
-                            <tr>
-                                <th>No. Tiket</th>
-                                <th>Judul</th>
-                                <th>Kategori</th>
-                                <th class="ds-c">Prioritas</th>
-                                <th class="ds-c">Status</th>
-                                <th>Teknisi</th>
-                                <th>Dilapor</th>
-                                <th class="ds-c">Umur / SLA</th>
-                                <th class="ds-c">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($this->rows as $row)
-                                @php $editable = $row->status_id == $this->openStatusId; @endphp
-                                <tr wire:key="mtkt-{{ $row->id }}">
-                                    <td class="ds-td-token">{{ $row->ticket_no }}</td>
-                                    <td class="ds-td-strong max-w-xs truncate">{{ $row->title }}</td>
-                                    <td>{{ $row->category ?: '—' }}</td>
-                                    <td class="ds-c">
-                                        @if ($row->priority)
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
-                                                  style="background: {{ $row->priority_color }}">{{ $row->priority }}</span>
-                                        @else — @endif
-                                    </td>
-                                    <td class="ds-c">
-                                        @if ($row->status)
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
-                                                  style="background: {{ $row->status_color }}">{{ $row->status }}</span>
-                                        @else — @endif
-                                    </td>
-                                    <td>{{ $row->technician ?: 'Belum ditugaskan' }}</td>
-                                    <td class="text-xs text-muted">{{ $row->reported_at ?: '—' }}</td>
-                                    <td class="ds-c">
-                                        @if ($row->overdue)
-                                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">⚠ {{ $row->age_label }}</span>
-                                        @else
-                                            <span class="text-xs {{ $row->is_closed ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted' }}">{{ $row->age_label }}</span>
-                                        @endif
-                                    </td>
-                                    <td class="ds-c">
-                                        <div class="flex items-center justify-center gap-2">
-                                            <x-outline-button type="button" wire:click="openRespond({{ $row->id }})">
-                                                Respon
-                                                @if ($row->comment_count > 0)
-                                                    <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-brand-green text-white dark:bg-brand-lime dark:text-gray-900">{{ $row->comment_count }}</span>
-                                                @endif
-                                            </x-outline-button>
-                                            @if ($editable)
-                                                <x-action-edit wire:click="openEdit({{ $row->id }})" />
-                                                <x-action-delete :action="'requestDelete(' . $row->id . ')'"
-                                                    title="Batalkan Tiket" message="Yakin batalkan tiket {{ $row->ticket_no }}?" />
-                                            @else
-                                                <span class="text-[11px] italic text-muted-soft">terkunci (diproses)</span>
-                                            @endif
-                                        </div>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="9" class="px-6 py-10">
-                                        <div class="flex flex-col items-center justify-center gap-3">
-                                            <svg class="w-12 h-12 text-muted-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                            <p class="text-base font-medium text-muted dark:text-gray-400">Anda belum punya tiket. Klik "Lapor Tiket".</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+            {{-- CARD GRID (gaya tiket) --}}
+            <div class="mt-4 flex flex-col flex-1 min-h-0">
+                <div class="flex-1 min-h-0 overflow-y-auto pb-2 pr-1">
+                    @if ($this->rows->count())
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                            @foreach ($this->rows as $row)
+                                <x-ticket-card wire:key="mtkt-{{ $row->id }}" :row="$row"
+                                    :editable="false" lockedNote="" />
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="flex flex-col items-center justify-center gap-3 py-20">
+                            <svg class="w-12 h-12 text-muted-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                            <p class="text-base font-medium text-muted dark:text-gray-400">Anda belum punya tiket. Klik "Lapor Tiket".</p>
+                        </div>
+                    @endif
                 </div>
-                <div class="sticky bottom-0 z-10 px-4 py-3 bg-canvas border-t border-hairline rounded-b-2xl dark:bg-gray-900 dark:border-gray-700">
+                <div class="pt-3 mt-auto">
                     {{ $this->rows->links() }}
                 </div>
             </div>

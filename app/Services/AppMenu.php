@@ -74,19 +74,32 @@ class AppMenu
         $masterRoles = self::MASTER_ROLES;
 
         return [
-            // ── Tiket (operasional) ─────────────────────────────────────
-            $entry(['group' => 'Tiket', 'groupOrder' => 0, 'order' => 1, 'route' => 'transaksi.my-tickets', 'title' => 'Tiket Saya', 'desc' => 'Lapor gangguan & pantau tiket yang Anda kirim', 'roles' => ['*'], 'badge' => 'TIKET']),
-            $entry(['group' => 'Tiket', 'groupOrder' => 0, 'order' => 2, 'route' => 'transaksi.tickets', 'title' => 'Kelola Tiket', 'desc' => 'Semua tiket — respon, update progress & status (teknisi)', 'roles' => ['admin', 'manager', 'teknisi'], 'badge' => 'TIKET']),
+            // ── Pelaporan (semua user) ──────────────────────────────────
+            $entry(['group' => 'Pelaporan', 'groupOrder' => 0, 'order' => 1, 'route' => 'transaksi.my-tickets', 'title' => 'Tiket Saya', 'desc' => 'Lapor gangguan & pantau tiket yang Anda kirim', 'roles' => ['*'], 'badge' => 'TIKET']),
+
+            // ── Penanganan (petugas & pengawas) ─────────────────────────
+            // Handler (respon/tutup) = teknisi & admin · Pengawas (read-only) = manager & direktur.
+            $entry(['group' => 'Penanganan', 'groupOrder' => 1, 'order' => 1, 'route' => 'transaksi.tickets', 'title' => 'Kelola Tiket', 'desc' => 'Semua tiket — tangani (teknisi) / pantau (manager & direktur)', 'roles' => ['admin', 'manager', 'teknisi', 'direktur'], 'badge' => 'TIKET']),
 
             // ── Master GPER (ticketing) ─────────────────────────────────
-            $entry(['group' => 'Master GPER', 'groupOrder' => 1, 'order' => 1, 'route' => 'master.ticket-categories', 'title' => 'Master Kategori Tiket', 'desc' => 'Jenis gangguan: Hardware, Network, Software, dll', 'roles' => $masterRoles, 'badge' => 'GPER']),
-            $entry(['group' => 'Master GPER', 'groupOrder' => 1, 'order' => 2, 'route' => 'master.locations', 'title' => 'Master Lokasi', 'desc' => 'Lokasi / ruangan tempat gangguan terjadi', 'roles' => $masterRoles, 'badge' => 'GPER']),
-            $entry(['group' => 'Master GPER', 'groupOrder' => 1, 'order' => 3, 'route' => 'master.priorities', 'title' => 'Master Prioritas', 'desc' => 'Tingkat prioritas tiket + SLA & warna badge', 'roles' => $masterRoles, 'badge' => 'GPER']),
-            $entry(['group' => 'Master GPER', 'groupOrder' => 1, 'order' => 4, 'route' => 'master.departments', 'title' => 'Master Departemen', 'desc' => 'Unit kerja / departemen pelapor tiket', 'roles' => $masterRoles, 'badge' => 'GPER']),
-            $entry(['group' => 'Master GPER', 'groupOrder' => 1, 'order' => 5, 'route' => 'master.ticket-statuses', 'title' => 'Master Status Tiket', 'desc' => 'Status alur tiket (Open, In Progress, Resolved, dll)', 'roles' => $masterRoles, 'badge' => 'GPER']),
+            $entry(['group' => 'Master GPER', 'groupOrder' => 2, 'order' => 1, 'route' => 'master.ticket-categories', 'title' => 'Master Kategori Tiket', 'desc' => 'Jenis gangguan: Hardware, Network, Software, dll', 'roles' => $masterRoles, 'badge' => 'GPER']),
+            $entry(['group' => 'Master GPER', 'groupOrder' => 2, 'order' => 2, 'route' => 'master.locations', 'title' => 'Master Lokasi', 'desc' => 'Lokasi / ruangan tempat gangguan terjadi', 'roles' => $masterRoles, 'badge' => 'GPER']),
+            $entry(['group' => 'Master GPER', 'groupOrder' => 2, 'order' => 3, 'route' => 'master.priorities', 'title' => 'Master Prioritas', 'desc' => 'Tingkat prioritas tiket + SLA & warna badge', 'roles' => $masterRoles, 'badge' => 'GPER']),
+            $entry(['group' => 'Master GPER', 'groupOrder' => 2, 'order' => 4, 'route' => 'master.departments', 'title' => 'Master Departemen', 'desc' => 'Unit kerja / departemen pelapor tiket', 'roles' => $masterRoles, 'badge' => 'GPER']),
+            $entry(['group' => 'Master GPER', 'groupOrder' => 2, 'order' => 5, 'route' => 'master.ticket-statuses', 'title' => 'Master Status Tiket', 'desc' => 'Status alur tiket (Open, In Progress, Resolved, dll)', 'roles' => $masterRoles, 'badge' => 'GPER']),
+
+            // ── Suara Pasien ──────────────────────────────────────────
+            $entry(['group' => 'Suara Pasien', 'groupOrder' => 3, 'order' => 1, 'route' => 'suara-pasien.rekap', 'title' => 'Rekap Suara Pasien', 'desc' => 'Ulasan & penilaian pasien (rating bintang) + moderasi', 'roles' => ['admin', 'manager', 'direktur'], 'badge' => 'ULAS']),
+
+            // ── Survei ────────────────────────────────────────────────
+            $entry(['group' => 'Survei', 'groupOrder' => 4, 'order' => 1, 'route' => 'survei.kelola', 'title' => 'Kelola Survei', 'desc' => 'Buat survei, aktifkan (publik), tutup & lihat hasil/evaluasi', 'roles' => ['admin', 'manager'], 'badge' => 'SRV']),
+
+            // ── Pengaduan & Aspirasi ──────────────────────────────────
+            $entry(['group' => 'Pengaduan & Aspirasi', 'groupOrder' => 5, 'order' => 1, 'route' => 'insiden.rekap', 'title' => 'Rekap Pengaduan', 'desc' => 'Pengaduan & aspirasi karyawan: etika, K3, kecurangan, layanan (web + API)', 'roles' => ['admin', 'manager'], 'badge' => 'ADU']),
+            $entry(['group' => 'Pengaduan & Aspirasi', 'groupOrder' => 5, 'order' => 2, 'route' => 'insiden.api-docs', 'title' => 'Dokumentasi API', 'desc' => 'Panduan bridging: token, endpoint & contoh cURL untuk sistem lain', 'roles' => ['admin'], 'badge' => 'API']),
 
             // ── Penawaran ─────────────────────────────────────────────
-            $entry(['group' => 'Penawaran', 'groupOrder' => 2, 'order' => 1, 'route' => 'penawaran.perbaikan-siklik', 'title' => 'Proposal SIKLIK', 'desc' => 'Sistem Informasi Klinik — kesiapan piloting rujukan Tulungagung', 'roles' => $masterRoles, 'badge' => 'GPER']),
+            $entry(['group' => 'Penawaran', 'groupOrder' => 6, 'order' => 1, 'route' => 'penawaran.perbaikan-siklik', 'title' => 'Proposal SIKLIK', 'desc' => 'Sistem Informasi Klinik — kesiapan piloting rujukan Tulungagung', 'roles' => $masterRoles, 'badge' => 'GPER']),
 
             // ── Sistem ────────────────────────────────────────────────
             $entry(['group' => 'Sistem', 'groupOrder' => 14, 'order' => 1, 'route' => 'database-monitor.monitoring-dashboard', 'title' => 'Oracle Session Monitor', 'desc' => 'Locks, long-running SQL & kill session', 'roles' => ['admin'], 'badge' => 'DB']),

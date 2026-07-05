@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
@@ -8,26 +9,48 @@ use App\Services\TicketLog;
 use App\Http\Traits\WithRenderVersioning\WithRenderVersioningTrait;
 
 new class extends Component {
-    use WithRenderVersioningTrait;
+    use WithRenderVersioningTrait, WithFileUploads;
 
     public string $formMode   = 'create';
     public int    $originalId = 0;
     public string $ticketNo   = '';
+    public $photo = null; // foto gangguan (opsional, saat create)
     public array  $renderVersions = [];
     protected array $renderAreas  = ['modal'];
 
     public array $form = [
         'title'         => '',
         'description'   => '',
+        'sector_id'     => '',
         'category_id'   => '',
         'priority_id'   => '',
-        'location_id'   => '',
-        'department_id' => '',
+        'location_id'     => '',
+        'location_detail' => '',
     ];
 
     public function mount(): void { $this->registerAreas(['modal']); }
 
-    #[Computed] public function categories(): array { return DB::table('ticket_categories')->where('is_active', 1)->orderBy('name')->pluck('name', 'id')->all(); }
+    /** Ganti sektor → reset kategori (kategori terikat sektor). */
+    public function updated($property): void
+    {
+        if ($property === 'form.sector_id') {
+            $this->form['category_id'] = '';
+        }
+    }
+
+    /** Sektor penanganan (departemen is_sector=1): IT, CSSD, IPS. */
+    #[Computed] public function sectors(): array { return DB::table('departments')->where('is_active', 1)->where('is_sector', 1)->orderBy('name')->pluck('name', 'id')->all(); }
+
+    /** Kategori terfilter sesuai sektor terpilih (kosong bila sektor belum dipilih). */
+    #[Computed] public function categories(): array
+    {
+        if ($this->form['sector_id'] === '') {
+            return [];
+        }
+        return DB::table('ticket_categories')->where('is_active', 1)
+            ->where('sector_id', (int) $this->form['sector_id'])
+            ->orderBy('name')->pluck('name', 'id')->all();
+    }
     #[Computed] public function priorities(): array { return DB::table('priorities')->where('is_active', 1)->orderByDesc('level')->pluck('name', 'id')->all(); }
     #[Computed] public function locations(): array  { return DB::table('locations')->where('is_active', 1)->orderBy('name')->pluck('name', 'id')->all(); }
     #[Computed] public function departments(): array { return DB::table('departments')->where('is_active', 1)->orderBy('name')->pluck('name', 'id')->all(); }
@@ -74,10 +97,11 @@ new class extends Component {
         $this->form = [
             'title'         => (string) $t->title,
             'description'   => (string) ($t->description ?? ''),
+            'sector_id'     => $t->sector_id ? (string) $t->sector_id : '',
             'category_id'   => $t->category_id ? (string) $t->category_id : '',
             'priority_id'   => $t->priority_id ? (string) $t->priority_id : '',
-            'location_id'   => $t->location_id ? (string) $t->location_id : '',
-            'department_id' => $t->department_id ? (string) $t->department_id : '',
+            'location_id'     => $t->location_id ? (string) $t->location_id : '',
+            'location_detail' => (string) ($t->location_detail ?? ''),
         ];
 
         $this->incrementVersion('modal');
@@ -114,37 +138,56 @@ new class extends Component {
         $rules = [
             'form.title'         => 'required|string|max:255',
             'form.description'   => 'nullable|string|max:2000',
+            'form.sector_id'     => 'required|integer|exists:departments,id',
             'form.category_id'   => 'required|integer|exists:ticket_categories,id',
             'form.priority_id'   => 'required|integer|exists:priorities,id',
-            'form.location_id'   => 'nullable|integer|exists:locations,id',
-            'form.department_id' => 'nullable|integer|exists:departments,id',
+            'form.location_id'     => 'required|integer|exists:locations,id',
+            'form.location_detail' => 'nullable|string|max:500',
+            'photo'                => 'nullable|image|max:5120',
         ];
 
         $messages = [
             'form.title.required'       => 'Judul gangguan wajib diisi.',
+            'photo.image'               => 'Berkas harus berupa gambar.',
+            'photo.max'                 => 'Ukuran gambar maksimal 5 MB.',
+            'form.sector_id.required'   => 'Sektor tujuan wajib dipilih.',
             'form.category_id.required' => 'Kategori wajib dipilih.',
             'form.priority_id.required' => 'Prioritas wajib dipilih.',
+            'form.location_id.required' => 'Lokasi wajib dipilih.',
         ];
 
         $attributes = [
             'form.title'         => 'Judul',
+            'form.sector_id'     => 'Sektor',
             'form.category_id'   => 'Kategori',
             'form.priority_id'   => 'Prioritas',
-            'form.location_id'   => 'Lokasi',
-            'form.department_id' => 'Departemen',
+            'form.location_id'     => 'Lokasi',
+            'form.location_detail' => 'Detail Ruangan',
         ];
 
         $this->validate($rules, $messages, $attributes);
 
+        // Kategori harus milik sektor terpilih (jaga-jaga bila kategori ter-set sebelum sektor diganti).
+        $catSector = DB::table('ticket_categories')->where('id', (int) $this->form['category_id'])->value('sector_id');
+        if ((int) $catSector !== (int) $this->form['sector_id']) {
+            $this->addError('form.category_id', 'Kategori tidak sesuai sektor yang dipilih.');
+            return;
+        }
+
         $payload = [
             'title'         => trim($this->form['title']),
             'description'   => $this->form['description'] !== '' ? trim($this->form['description']) : null,
+            'sector_id'     => (int) $this->form['sector_id'],
             'category_id'   => (int) $this->form['category_id'],
             'priority_id'   => (int) $this->form['priority_id'],
-            'location_id'   => $this->form['location_id'] !== '' ? (int) $this->form['location_id'] : null,
-            'department_id' => $this->form['department_id'] !== '' ? (int) $this->form['department_id'] : null,
-            'updated_at'    => now(),
+            'location_id'     => $this->form['location_id'] !== '' ? (int) $this->form['location_id'] : null,
+            'location_detail' => $this->form['location_detail'] !== '' ? trim($this->form['location_detail']) : null,
+            'updated_at'      => now(),
         ];
+
+        if ($this->photo) {
+            $payload['attachment_path'] = $this->photo->store('ticket-attachments', 'public');
+        }
 
         if ($this->formMode === 'create') {
             $payload['ticket_no']   = $this->generateTicketNo();
@@ -153,7 +196,8 @@ new class extends Component {
             $payload['reported_at'] = now();
             $payload['part_cost']   = 0;
             $payload['created_at']  = now();
-            $id = DB::table('tickets')->insertGetId($payload);
+            DB::table('tickets')->insert($payload);
+            $id = (int) DB::table('tickets')->where('ticket_no', $payload['ticket_no'])->value('id');
             TicketLog::log($id, 'created', null, null, 'Tiket dilaporkan');
         } else {
             // re-guard: masih milik user & status Open
@@ -164,7 +208,9 @@ new class extends Component {
             DB::table('tickets')->where('id', $this->originalId)->update($payload);
         }
 
-        $this->dispatch('toast', type: 'success', message: 'Tiket berhasil disimpan.');
+        $this->dispatch('toast', type: 'success', message: $this->formMode === 'create'
+            ? 'Laporan terkirim! No. Tiket: ' . $payload['ticket_no'] . ' — simpan nomor ini untuk cek progress perbaikan.'
+            : 'Tiket berhasil diperbarui.');
         $this->closeModal();
         $this->dispatch('my-tickets.saved');
     }
@@ -179,17 +225,18 @@ new class extends Component {
     private function resetForm(): void
     {
         $this->form = [
-            'title' => '', 'description' => '', 'category_id' => '', 'priority_id' => '',
-            'location_id' => '', 'department_id' => '',
+            'title' => '', 'description' => '', 'sector_id' => '', 'category_id' => '', 'priority_id' => '',
+            'location_id' => '', 'location_detail' => '',
         ];
         $this->ticketNo = '';
+        $this->photo = null;
         $this->resetValidation();
     }
 };
 ?>
 
 <div>
-    <x-modal name="my-tickets-actions" size="lg" height="auto" focusable>
+    <x-modal name="my-tickets-actions" size="full" height="full" focusable>
         <x-dirty-modal-content
             name="my-tickets-actions"
             event="my-tickets.saved"
@@ -228,8 +275,18 @@ new class extends Component {
                  x-data
                  x-on:focus-title.window="$nextTick(() => setTimeout(() => $refs.inputTitle?.focus(), 150))">
 
+                <div class="grid items-start grid-cols-1 gap-4 mx-auto max-w-5xl lg:grid-cols-2">
                 <x-border-form title="Detail Gangguan">
                     <div class="space-y-4">
+                        <div>
+                            <x-input-label value="Pelapor" />
+                            <div class="flex items-center gap-2 px-3 py-2 mt-1 border rounded-lg bg-surface-soft border-hairline text-body dark:bg-gray-900 dark:border-gray-700 dark:text-gray-200">
+                                <svg class="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                                <span class="font-semibold">{{ auth()->user()->name }}</span>
+                            </div>
+                            <p class="mt-1 text-xs text-muted dark:text-gray-400">Otomatis dari akun Anda — tiket tercatat atas nama ini.</p>
+                        </div>
+
                         <div>
                             <x-input-label value="Judul Gangguan *" />
                             <x-text-input wire:model.live="form.title" x-ref="inputTitle"
@@ -246,11 +303,24 @@ new class extends Component {
                             <x-input-error :messages="$errors->get('form.description')" class="mt-1" />
                         </div>
 
+                        {{-- Sektor tujuan (seperti memilih jasa kirim) --}}
+                        <div>
+                            <x-input-label value="Sektor Tujuan *" />
+                            <x-select-input wire:model.live="form.sector_id" class="w-full mt-1" :error="$errors->has('form.sector_id')">
+                                <option value="">— pilih sektor —</option>
+                                @foreach ($this->sectors as $id => $name)
+                                    <option value="{{ $id }}">{{ $name }}</option>
+                                @endforeach
+                            </x-select-input>
+                            <x-input-error :messages="$errors->get('form.sector_id')" class="mt-1" />
+                            <p class="mt-1 text-xs text-muted dark:text-gray-400">Unit yang menangani: <strong>IT</strong>, <strong>CSSD</strong>, atau <strong>IPS</strong>. Pilihan kategori menyesuaikan sektor.</p>
+                        </div>
+
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
                                 <x-input-label value="Kategori *" />
-                                <x-select-input wire:model.live="form.category_id" class="w-full mt-1" :error="$errors->has('form.category_id')">
-                                    <option value="">— pilih —</option>
+                                <x-select-input wire:model.live="form.category_id" class="w-full mt-1" :error="$errors->has('form.category_id')" :disabled="$form['sector_id'] === ''">
+                                    <option value="">{{ $form['sector_id'] === '' ? '— pilih sektor dulu —' : '— pilih —' }}</option>
                                     @foreach ($this->categories as $id => $name)
                                         <option value="{{ $id }}">{{ $name }}</option>
                                     @endforeach
@@ -268,28 +338,38 @@ new class extends Component {
                                 <x-input-error :messages="$errors->get('form.priority_id')" class="mt-1" />
                             </div>
                         </div>
+                    </div>
+                </x-border-form>
 
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <x-input-label value="Lokasi" />
-                                <x-select-input wire:model.live="form.location_id" class="w-full mt-1">
-                                    <option value="">— pilih —</option>
-                                    @foreach ($this->locations as $id => $name)
-                                        <option value="{{ $id }}">{{ $name }}</option>
-                                    @endforeach
-                                </x-select-input>
-                                <x-input-error :messages="$errors->get('form.location_id')" class="mt-1" />
-                            </div>
-                            <div>
-                                <x-input-label value="Departemen" />
-                                <x-select-input wire:model.live="form.department_id" class="w-full mt-1">
-                                    <option value="">— pilih —</option>
-                                    @foreach ($this->departments as $id => $name)
-                                        <option value="{{ $id }}">{{ $name }}</option>
-                                    @endforeach
-                                </x-select-input>
-                                <x-input-error :messages="$errors->get('form.department_id')" class="mt-1" />
-                            </div>
+                <x-border-form title="Lokasi">
+                    <div class="space-y-4">
+                        <div>
+                            <x-input-label value="Lokasi *" />
+                            <x-select-input wire:model.live="form.location_id" class="w-full mt-1" :error="$errors->has('form.location_id')">
+                                <option value="">— pilih —</option>
+                                @foreach ($this->locations as $id => $name)
+                                    <option value="{{ $id }}">{{ $name }}</option>
+                                @endforeach
+                            </x-select-input>
+                            <x-input-error :messages="$errors->get('form.location_id')" class="mt-1" />
+                        </div>
+
+                        <div>
+                            <x-input-label value="Detail Ruangan (opsional)" />
+                            <textarea wire:model.live="form.location_detail" rows="2" maxlength="500"
+                                class="w-full mt-1 rounded-lg border-hairline bg-canvas text-body dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 focus:border-brand-green focus:ring-brand-green"
+                                placeholder="mis. Lantai 3, ruang server, dekat rak B — AC unit ke-2 bocor"></textarea>
+                            <x-input-error :messages="$errors->get('form.location_detail')" class="mt-1" />
+                            <p class="mt-1 text-xs text-muted dark:text-gray-400">Jelaskan ruangan / titik detail kejadian agar teknisi mudah menemukan.</p>
+                        </div>
+
+                        <div>
+                            <x-input-label value="Foto Gangguan (opsional)" />
+                            <x-file-upload name="photo" accept="image/*" loadingText="Mengunggah foto..." />
+                            @if ($photo)
+                                <img src="{{ $photo->temporaryUrl() }}" alt="Pratinjau" class="object-cover w-full h-40 mt-2 border rounded-lg border-hairline dark:border-gray-700" />
+                            @endif
+                            <p class="mt-1 text-xs text-muted dark:text-gray-400">Lampirkan foto kondisi gangguan bila ada (maks. 5 MB).</p>
                         </div>
 
                         <p class="text-xs text-muted dark:text-gray-400">
@@ -298,6 +378,7 @@ new class extends Component {
                         </p>
                     </div>
                 </x-border-form>
+                </div>
             </div>
 
             {{-- FOOTER --}}

@@ -52,6 +52,12 @@ new class extends Component {
         // contoh: $this->dispatch('open-print', url: route('...print'));
     }
 
+    // No-op: aksi <x-ticket-card> di showcase (openRespond/openEdit/requestDelete)
+    // supaya klik tombol demo tidak error — di halaman nyata method ini ada di komponen list.
+    public function openRespond($id = null): void {}
+    public function openEdit($id = null): void {}
+    public function requestDelete($id = null): void {}
+
     // Paginator ASLI untuk demo komponen pagination (Livewire WithPagination).
     // Dataset palsu 14 baris, 5 per halaman — tombol prev/next/nomor benar berfungsi.
     // Reset ke halaman 1 saat per-halaman berubah (pola standar list).
@@ -810,6 +816,116 @@ $dispatch(<span style="color:var(--accent-amber)">'close-modal'</span>, &#123; n
                         </x-scrollable-tabs>
                     </div>
                     <p class="ds-body-sm mt-3" style="color:var(--muted-soft)">Bungkus <code class="ds-code">&lt;ul&gt;</code> tab; otomatis single-line + 2 tombol panah brand saat konten ter-hidden.</p>
+                </div>
+
+                {{-- ===== KARTU & STATUS DISPLAY (komponen redesign tiket) ===== --}}
+                <div class="ds-caption-up mb-4 mt-10" style="color:var(--muted)">Kartu &amp; status display</div>
+                <p class="ds-body-sm mb-5" style="color:var(--muted-soft);max-width:72ch">
+                    Komponen berbasis kartu untuk daftar &amp; ringkasan data (Dashboard &amp; modul Tiket).
+                    Warna status/prioritas datang dari kolom DB (hex) lewat <code class="ds-code">&lt;x-color-pill&gt;</code>.
+                    Acuan: <code class="ds-code">docs/standar-ui-komponen.md</code> §7.
+                </p>
+
+                {{-- color-pill --}}
+                <div class="ds-card-outline mb-6">
+                    <div class="ds-caption-up mb-5" style="color:var(--muted)">Color pill — &lt;x-color-pill :color dot size&gt;</div>
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        <x-color-pill color="#2e7da6" dot>Open</x-color-pill>
+                        <x-color-pill color="#d4a017" dot>Diproses</x-color-pill>
+                        <x-color-pill color="#3fae6a" dot>Selesai</x-color-pill>
+                        <span class="mx-1" style="width:1px;height:20px;background:var(--hairline)"></span>
+                        <x-color-pill color="#c64545" size="sm">Tinggi</x-color-pill>
+                        <x-color-pill color="#d4a017" size="sm">Sedang</x-color-pill>
+                        <x-color-pill color="#69736b" size="sm">Rendah</x-color-pill>
+                    </div>
+                    <p class="ds-body-sm" style="color:var(--muted-soft)">
+                        <code class="ds-code">:color</code> hex dari DB · <code class="ds-code">dot</code> titik indikator (status) ·
+                        <code class="ds-code">size="sm"</code> tag prioritas. Beda dari <code class="ds-code">&lt;x-badge&gt;</code> yang varian semantik tetap.
+                    </p>
+                </div>
+
+                {{-- stat-tile --}}
+                <div class="ds-card-outline mb-6">
+                    <div class="ds-caption-up mb-5" style="color:var(--muted)">Stat tile — &lt;x-stat-tile label value accent hint&gt;</div>
+                    <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+                        <x-stat-tile label="Total tiket" value="128" accent="#157547">
+                            <x-slot:icon><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" /></svg></x-slot:icon>
+                        </x-stat-tile>
+                        <x-stat-tile label="Belum selesai" value="34" accent="#d4a017" hint="6 belum direspon">
+                            <x-slot:icon><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></x-slot:icon>
+                        </x-stat-tile>
+                        <x-stat-tile label="Overdue SLA" value="5" accent="#c64545">
+                            <x-slot:icon><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg></x-slot:icon>
+                        </x-stat-tile>
+                        <x-stat-tile label="Selesai" value="89" accent="#3fae6a">
+                            <x-slot:icon><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></x-slot:icon>
+                        </x-stat-tile>
+                    </div>
+                    <p class="ds-body-sm mt-4" style="color:var(--muted-soft)">
+                        Props: <code class="ds-code">label</code>, <code class="ds-code">value</code>, <code class="ds-code">accent</code> (hex), <code class="ds-code">hint</code>, <code class="ds-code">href</code> (opsional → link). Slot <code class="ds-code">icon</code>.
+                    </p>
+                </div>
+
+                {{-- section-card + list-row --}}
+                <div class="grid grid-cols-1 gap-6 mb-6 lg:grid-cols-2">
+                    <div>
+                        <div class="ds-caption-up mb-3" style="color:var(--muted)">Section card + List row</div>
+                        <x-section-card title="Menunggu Respon" subtitle="3 tiket" body-class="p-3 space-y-2">
+                            @foreach ([
+                                ['t' => 'TIC-2026-0007 · AC ruang server mati', 'm' => 'Belum direspon · 05/07 10:40', 's' => 'Open', 'c' => '#2e7da6'],
+                                ['t' => 'TIC-2026-0006 · Printer front office', 'm' => 'Sudah direspon · 05/07 09:12', 's' => 'Diproses', 'c' => '#d4a017'],
+                                ['t' => 'TIC-2026-0005 · Wifi lantai 2 putus', 'm' => 'Belum direspon · 04/07 16:30', 's' => 'Open', 'c' => '#2e7da6'],
+                            ] as $d)
+                                <x-list-row :title="$d['t']" :meta="$d['m']">
+                                    <x-slot:leading>
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859M12 3v8.25m0 0l-3-3m3 3l3-3" /></svg>
+                                    </x-slot:leading>
+                                    <x-slot:trailing><x-color-pill :color="$d['c']" dot>{{ $d['s'] }}</x-color-pill></x-slot:trailing>
+                                </x-list-row>
+                            @endforeach
+                        </x-section-card>
+                    </div>
+                    <div>
+                        <div class="ds-caption-up mb-3" style="color:var(--muted)">Cara pakai</div>
+                        <div class="ds-card-dark" style="padding:20px">
+<pre class="ds-code" style="margin:0;color:var(--on-dark-soft);overflow-x:auto;font-size:13px">&lt;x-section-card title=<span style="color:var(--accent-amber)">"Menunggu Respon"</span> subtitle=<span style="color:var(--accent-amber)">"3 tiket"</span>
+                body-class=<span style="color:var(--accent-amber)">"p-3 space-y-2"</span>&gt;
+    &lt;x-list-row :title=<span style="color:var(--accent-amber)">"$w->title"</span> meta=<span style="color:var(--accent-amber)">"..."</span>&gt;
+        &lt;x-slot:leading&gt;&lt;svg .../&gt;&lt;/x-slot:leading&gt;
+        &lt;x-slot:trailing&gt;
+            &lt;x-color-pill :color=<span style="color:var(--accent-amber)">"$w->status_color"</span> dot&gt;&#123;&#123; $w-&gt;status &#125;&#125;&lt;/x-color-pill&gt;
+        &lt;/x-slot:trailing&gt;
+    &lt;/x-list-row&gt;
+&lt;/x-section-card&gt;</pre>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- ticket-card --}}
+                <div class="mb-6">
+                    <div class="ds-caption-up mb-3" style="color:var(--muted)">Ticket card — &lt;x-ticket-card :row&gt;</div>
+                    @php
+                        $demoTickets = [
+                            (object) ['id' => 0, 'ticket_no' => 'TIC-2026-0007', 'title' => 'AC ruang server mati total, suhu naik cepat',
+                                'status' => 'Diproses', 'status_color' => '#d4a017', 'priority' => 'Tinggi', 'priority_color' => '#c64545',
+                                'category' => 'Perangkat Keras', 'location' => 'Lantai 3 — Server', 'technician' => 'Budi Santoso',
+                                'reported_at' => '05/07/2026 10:40', 'age_label' => '2j 15m', 'overdue' => true, 'is_closed' => false, 'comment_count' => 3],
+                            (object) ['id' => 0, 'ticket_no' => 'TIC-2026-0006', 'title' => 'Update aplikasi kasir selesai diverifikasi',
+                                'status' => 'Selesai', 'status_color' => '#3fae6a', 'priority' => 'Rendah', 'priority_color' => '#69736b',
+                                'category' => 'Perangkat Lunak', 'location' => 'Front Office', 'technician' => 'Siti Aminah',
+                                'reported_at' => '04/07/2026 08:05', 'age_label' => '1h 3j', 'overdue' => false, 'is_closed' => true, 'comment_count' => 5],
+                        ];
+                    @endphp
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        @foreach ($demoTickets as $t)
+                            <x-ticket-card :row="$t" show-location deleteTitle="Hapus Tiket" />
+                        @endforeach
+                    </div>
+                    <p class="ds-body-sm mt-3" style="color:var(--muted-soft)">
+                        Props: <code class="ds-code">:row</code> (objek query), <code class="ds-code">editable</code>, <code class="ds-code">show-location</code>,
+                        <code class="ds-code">deleteTitle</code>, <code class="ds-code">deleteMessage</code>, <code class="ds-code">lockedNote</code>.
+                        Aksi <code class="ds-code">wire:click</code> → <code class="ds-code">openRespond/openEdit/requestDelete</code> di komponen induk.
+                    </p>
                 </div>
 
                 {{-- ===== SURFACE & KOMPOSISI (pola halaman) ===== --}}

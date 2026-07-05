@@ -23,7 +23,7 @@
             <div class="leading-tight">
                 @auth
                     <div class="text-base font-semibold text-ink dark:text-gray-100">{{ auth()->user()->name }}</div>
-                    <div class="text-sm text-muted dark:text-gray-400">{{ auth()->user()->profesiKlinis() ?: 'User' }}</div>
+                    <div class="text-sm text-muted dark:text-gray-400">{{ ucfirst(auth()->user()->getRoleNames()->first() ?: 'User') }}</div>
                 @else
                     <div class="text-base font-semibold text-ink dark:text-gray-100">Guest</div>
                     <div class="text-sm text-muted dark:text-gray-400">Silakan login</div>

@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    // Token Bearer untuk REST API pelaporan insiden (bridging sistem lain).
+    'incident_bridge' => [
+        'token' => env('INCIDENT_API_TOKEN'),
+    ],
+
 ];

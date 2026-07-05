@@ -44,7 +44,8 @@ new class extends Component {
         $searchKeyword = trim($this->searchKeyword);
 
         $query = DB::table('users as u')
-            ->select('u.id', 'u.name', 'u.email', 'u.myuser_profesi',
+            ->leftJoin('departments as sec', 'sec.id', '=', 'u.sector_id')
+            ->select('u.id', 'u.name', 'u.email', 'sec.name as sector_name',
                 DB::raw("TO_CHAR(u.created_at, 'dd/mm/yyyy HH24:MI:SS') as created_at"))
             ->orderBy('u.name', 'asc');
 
@@ -293,7 +294,7 @@ new class extends Component {
                                 <th class="px-4 py-3 font-semibold">Nama</th>
                                 <th class="px-4 py-3 font-semibold">Email</th>
                                 <th class="px-4 py-3 font-semibold">Role</th>
-                                <th class="px-4 py-3 font-semibold">Profesi</th>
+                                <th class="px-4 py-3 font-semibold">Sektor</th>
                                 <th class="px-4 py-3 font-semibold">Dibuat</th>
                                 <th class="px-4 py-3 font-semibold">Aksi</th>
                             </tr>
@@ -383,10 +384,10 @@ new class extends Component {
                                         </div>
                                     </td>
 
-                                    {{-- Profesi klinis — dari users.myuser_profesi --}}
+                                    {{-- Sektor penanganan — dari users.sector_id --}}
                                     <td class="px-4 py-3">
-                                        @if (!empty($row->myuser_profesi))
-                                            <span class="{{ $this->roleBadgeClass($row->myuser_profesi) }}">{{ $row->myuser_profesi }}</span>
+                                        @if (!empty($row->sector_name))
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-brand-green/10 text-brand-green dark:bg-brand-lime/15 dark:text-brand-lime">{{ $row->sector_name }}</span>
                                         @else
                                             <span class="text-xs italic text-muted-soft">-</span>
                                         @endif

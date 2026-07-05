@@ -47,7 +47,6 @@ new class extends Component {
                 'u.id',
                 'u.name',
                 'u.email',
-                'u.myuser_profesi',
                 DB::raw("TO_CHAR(u.last_seen_at, 'dd/mm/yyyy HH24:MI:SS') as last_seen_at_fmt"),
                 'u.last_seen_at',
                 'u.last_seen_route',
@@ -101,7 +100,6 @@ new class extends Component {
                 'kode' => $row->id,
                 'name' => $row->name,
                 'email' => $row->email,
-                'emp_id' => $row->myuser_profesi ?? '-',
                 'roles' => !empty($userRoles) ? implode(', ', $userRoles) : '-',
                 'last_seen_at' => $row->last_seen_at_fmt,
                 'last_seen_route' => $routeName ?: '-',
@@ -195,7 +193,6 @@ new class extends Component {
                                 <th class="px-4 py-3 font-semibold">ID</th>
                                 <th class="px-4 py-3 font-semibold">NAMA</th>
                                 <th class="px-4 py-3 font-semibold">EMAIL</th>
-                                <th class="px-4 py-3 font-semibold">PROFESI</th>
                                 <th class="px-4 py-3 font-semibold">ROLES</th>
                                 <th class="px-4 py-3 font-semibold">SEDANG DI</th>
                                 <th class="px-4 py-3 font-semibold">LAST SEEN</th>
@@ -209,7 +206,6 @@ new class extends Component {
                                     <td class="px-4 py-3 font-mono">{{ $r['kode'] ?? '-' }}</td>
                                     <td class="px-4 py-3 font-semibold">{{ $r['name'] ?? '-' }}</td>
                                     <td class="px-4 py-3">{{ $r['email'] ?? '-' }}</td>
-                                    <td class="px-4 py-3 font-mono">{{ $r['emp_id'] ?? '-' }}</td>
                                     <td class="px-4 py-3">{{ $r['roles'] }}</td>
                                     <td class="px-4 py-3">
                                         <div class="text-sm">{{ $r['sedang_di'] }}</div>
@@ -229,7 +225,7 @@ new class extends Component {
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8" class="px-4 py-10 text-center text-muted dark:text-gray-400">
+                                    <td colspan="7" class="px-4 py-10 text-center text-muted dark:text-gray-400">
                                         Tidak ada user online dalam {{ $thresholdMinutes }} menit terakhir.
                                     </td>
                                 </tr>

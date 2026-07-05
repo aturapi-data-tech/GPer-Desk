@@ -5,6 +5,21 @@ use Illuminate\Support\Facades\Route;
 
 Route::livewire('/', 'welcome')->name('home');
 
+// Form lapor publik/anonim — tanpa login (nama pelapor wajib).
+Route::livewire('/lapor', 'pages::lapor-publik.lapor-publik')->name('lapor');
+
+// Suara Pasien — ulasan/penilaian publik (ala Google Review), tanpa login.
+Route::livewire('/suara-pasien', 'pages::suara-pasien.publik')->name('suara-pasien');
+
+// Cek progress perbaikan berdasarkan nomor tiket — publik, tanpa login.
+Route::livewire('/cek-tiket', 'pages::cek-tiket.cek-tiket')->name('cek-tiket');
+
+// Survei publik — isi survei yang sedang aktif, tanpa login.
+Route::livewire('/survei', 'pages::survei-publik.survei-publik')->name('survei.publik');
+
+// Pelaporan insiden karyawan (whistleblowing) — publik, bisa anonim.
+Route::livewire('/lapor-insiden', 'pages::insiden-publik.insiden-publik')->name('insiden.publik');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('/dashboard', 'dashboard')->name('dashboard');
 });
@@ -21,6 +36,20 @@ Route::middleware(['auth'])->group(function () {
         ->name('transaksi.my-tickets');
     Route::livewire('/transaksi/tickets', 'pages::transaksi.tickets.tickets')
         ->name('transaksi.tickets');
+
+    // Rekap Suara Pasien (moderasi ulasan) — admin/manager/direktur.
+    Route::livewire('/suara-pasien/rekap', 'pages::suara-pasien.rekap')
+        ->name('suara-pasien.rekap');
+
+    // Survei — kelola (admin/manager): daftar, builder, hasil.
+    Route::livewire('/survei/kelola', 'pages::survei.kelola')->name('survei.kelola');
+    Route::livewire('/survei/kelola/builder', 'pages::survei.builder')->name('survei.builder');
+    Route::livewire('/survei/kelola/hasil', 'pages::survei.hasil')->name('survei.hasil');
+
+    // Pelaporan Insiden — rekap & evaluasi (admin/manager).
+    Route::livewire('/insiden/rekap', 'pages::insiden.rekap')->name('insiden.rekap');
+    // Dokumentasi API bridging pengaduan (admin — menampilkan token).
+    Route::livewire('/insiden/api-docs', 'pages::insiden.api-docs')->name('insiden.api-docs');
 
     // ===========================================
     // GPER — MASTER DATA (ticketing & strategis)

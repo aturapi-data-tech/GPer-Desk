@@ -2,6 +2,7 @@
 
 use Livewire\Component;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
 use App\Http\Traits\WithRenderVersioning\WithRenderVersioningTrait;
@@ -17,6 +18,7 @@ new class extends Component {
     public array $form = [
         'name'        => '',
         'code'        => '',
+        'sector_id'   => '',
         'description' => '',
         'is_active'   => 1,
     ];
@@ -24,6 +26,14 @@ new class extends Component {
     public function mount(): void
     {
         $this->registerAreas(['modal']);
+    }
+
+    /** Sektor penanganan (departemen is_sector=1): IT, CSSD, IPS. */
+    #[Computed]
+    public function sectors(): array
+    {
+        return DB::table('departments')->where('is_active', 1)->where('is_sector', 1)
+            ->orderBy('name')->pluck('name', 'id')->all();
     }
 
     #[On('master.ticket-categories.openCreate')]
@@ -49,6 +59,7 @@ new class extends Component {
         $this->form = [
             'name'        => (string) $row->name,
             'code'        => (string) ($row->code ?? ''),
+            'sector_id'   => $row->sector_id ? (string) $row->sector_id : '',
             'description' => (string) ($row->description ?? ''),
             'is_active'   => (int) $row->is_active,
         ];
@@ -88,19 +99,22 @@ new class extends Component {
         $rules = [
             'form.name'        => "required|string|max:100|{$unique}",
             'form.code'        => 'nullable|string|max:30',
+            'form.sector_id'   => 'required|integer|exists:departments,id',
             'form.description' => 'nullable|string|max:1000',
             'form.is_active'   => 'required|boolean',
         ];
 
         $messages = [
-            'form.name.required' => 'Nama kategori wajib diisi.',
-            'form.name.unique'   => 'Nama kategori sudah digunakan.',
-            'form.name.max'      => 'Nama kategori maksimal 100 karakter.',
+            'form.name.required'      => 'Nama kategori wajib diisi.',
+            'form.name.unique'        => 'Nama kategori sudah digunakan.',
+            'form.name.max'           => 'Nama kategori maksimal 100 karakter.',
+            'form.sector_id.required' => 'Sektor penanganan wajib dipilih.',
         ];
 
         $attributes = [
             'form.name'        => 'Nama Kategori',
             'form.code'        => 'Kode',
+            'form.sector_id'   => 'Sektor',
             'form.description' => 'Deskripsi',
             'form.is_active'   => 'Status',
         ];
@@ -110,6 +124,7 @@ new class extends Component {
         $payload = [
             'name'        => trim($this->form['name']),
             'code'        => $this->form['code'] !== '' ? trim($this->form['code']) : null,
+            'sector_id'   => (int) $this->form['sector_id'],
             'description' => $this->form['description'] !== '' ? trim($this->form['description']) : null,
             'is_active'   => (int) $this->form['is_active'],
             'updated_at'  => now(),
@@ -135,7 +150,7 @@ new class extends Component {
 
     private function resetForm(): void
     {
-        $this->form = ['name' => '', 'code' => '', 'description' => '', 'is_active' => 1];
+        $this->form = ['name' => '', 'code' => '', 'sector_id' => '', 'description' => '', 'is_active' => 1];
         $this->resetValidation();
     }
 };
@@ -208,14 +223,17 @@ new class extends Component {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                            <div class="sm:col-span-2">
-                                <x-input-label value="Deskripsi" />
-                                <x-text-input wire:model.live="form.description"
-                                    maxlength="1000"
-                                    :error="$errors->has('form.description')"
-                                    class="w-full mt-1" />
-                                <x-input-error :messages="$errors->get('form.description')" class="mt-1" />
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <x-input-label value="Sektor Penanganan *" />
+                                <x-select-input wire:model.live="form.sector_id" class="w-full mt-1" :error="$errors->has('form.sector_id')">
+                                    <option value="">— pilih sektor —</option>
+                                    @foreach ($this->sectors as $id => $name)
+                                        <option value="{{ $id }}">{{ $name }}</option>
+                                    @endforeach
+                                </x-select-input>
+                                <x-input-error :messages="$errors->get('form.sector_id')" class="mt-1" />
+                                <p class="mt-1 text-xs text-muted dark:text-gray-400">Tim yang menangani kategori ini (mis. AC/Listrik → IPS, Hardware → IT).</p>
                             </div>
                             <div>
                                 <x-input-label value="Status" />
@@ -225,6 +243,15 @@ new class extends Component {
                                 </x-select-input>
                                 <x-input-error :messages="$errors->get('form.is_active')" class="mt-1" />
                             </div>
+                        </div>
+
+                        <div>
+                            <x-input-label value="Deskripsi" />
+                            <x-text-input wire:model.live="form.description"
+                                maxlength="1000"
+                                :error="$errors->has('form.description')"
+                                class="w-full mt-1" />
+                            <x-input-error :messages="$errors->get('form.description')" class="mt-1" />
                         </div>
                     </div>
                 </x-border-form>

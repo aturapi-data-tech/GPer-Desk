@@ -33,7 +33,7 @@ new class extends Component {
     public function rows()
     {
         $q = DB::table('departments')
-            ->select('id', 'name', 'code', 'head_name', 'is_active')
+            ->select('id', 'name', 'code', 'head_name', 'is_active', 'is_sector')
             ->orderBy('name');
 
         if (trim($this->searchKeyword) !== '') {
@@ -98,6 +98,7 @@ new class extends Component {
                                 <th>Nama Departemen</th>
                                 <th>Kode</th>
                                 <th>Kepala Unit</th>
+                                <th class="ds-c">Sektor?</th>
                                 <th class="ds-c">Status</th>
                                 <th class="ds-c">Aksi</th>
                             </tr>
@@ -109,6 +110,13 @@ new class extends Component {
                                     <td class="ds-td-strong">{{ $row->name }}</td>
                                     <td>{{ $row->code ?: '—' }}</td>
                                     <td>{{ $row->head_name ?: '—' }}</td>
+                                    <td class="ds-c">
+                                        @if ($row->is_sector)
+                                            <x-badge variant="brand">Sektor</x-badge>
+                                        @else
+                                            <span class="text-xs text-muted-soft">—</span>
+                                        @endif
+                                    </td>
                                     <td class="ds-c">
                                         <x-badge :variant="$row->is_active ? 'success' : 'gray'">
                                             {{ $row->is_active ? 'Aktif' : 'Nonaktif' }}
@@ -124,7 +132,7 @@ new class extends Component {
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="px-6 py-10">
+                                    <td colspan="7" class="px-6 py-10">
                                         <div class="flex flex-col items-center justify-center gap-3">
                                             <svg class="w-12 h-12 text-muted-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
                                             <p class="text-base font-medium text-muted dark:text-gray-400">Data departemen tidak ditemukan.</p>

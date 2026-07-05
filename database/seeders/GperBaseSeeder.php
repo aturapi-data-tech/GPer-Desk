@@ -27,7 +27,6 @@ class GperBaseSeeder extends Seeder
             [
                 'name' => 'Administrator',
                 'password' => Hash::make('admin123'),
-                'myuser_profesi' => 'Administrator',
             ]
         );
 

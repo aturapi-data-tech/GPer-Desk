@@ -300,6 +300,101 @@ Lihat [tabs-pattern.md](tabs-pattern.md) untuk panduan lengkap `x-tabs` / `x-tab
 
 ---
 
+## 7. Kartu & Data Display (redesign tiket)
+
+Komponen berbasis kartu untuk **daftar & ringkasan data** (dipakai di Dashboard, Tiket Saya, Kelola Tiket, modal Respon). Semua tampil hidup di halaman `/standarisasi-ui` → seksi **"Kartu & status display"**.
+
+### `<x-color-pill>` — pill status/prioritas dinamis (hex)
+
+Warna datang dari **kolom DB** (`status_color`, `priority_color`) via inline style — beda dari `<x-badge>` yang varian semantik tetap. Pakai `<x-color-pill>` bila warnanya data-driven; `<x-badge>` bila semantik tetap (success/warning/…).
+
+```blade
+{{-- status: rounded-full + titik indikator --}}
+<x-color-pill :color="$row->status_color" dot>{{ $row->status }}</x-color-pill>
+
+{{-- prioritas: tag kecil rounded-md --}}
+<x-color-pill :color="$row->priority_color" size="sm">{{ $row->priority }}</x-color-pill>
+```
+
+| Prop | Default | Keterangan |
+|------|---------|------------|
+| `color` | `#6b7280` | Warna hex dari DB (background) |
+| `dot` | `false` | Titik indikator di depan (untuk status) |
+| `size` | `md` | `md` = pill status (rounded-full) · `sm` = tag prioritas (rounded-md) |
+
+### `<x-stat-tile>` — KPI tile (dashboard)
+
+```blade
+<x-stat-tile label="Belum selesai" :value="$open" accent="#d4a017" hint="6 belum direspon">
+    <x-slot:icon><svg ...></svg></x-slot:icon>
+</x-stat-tile>
+```
+
+| Prop | Default | Keterangan |
+|------|---------|------------|
+| `label` | `''` | Keterangan di bawah angka |
+| `value` | `0` | Angka utama |
+| `accent` | `#157547` | Warna hex aksen (bar kiri + ikon) |
+| `hint` | `null` | Baris kecil opsional |
+| `href` | `null` | Bila diisi → kartu jadi link (`wire:navigate`) |
+| slot `icon` | — | SVG ikon (opsional) |
+
+### `<x-list-row>` — baris daftar (ikon → judul/meta → trailing → chevron)
+
+```blade
+<x-list-row :title="$w->ticket_no . ' · ' . $w->title" meta="Dilapor 05/07 10:40">
+    <x-slot:leading><svg ...></svg></x-slot:leading>
+    <x-slot:trailing><x-color-pill :color="$w->status_color" dot>{{ $w->status }}</x-color-pill></x-slot:trailing>
+</x-list-row>
+```
+
+| Prop | Default | Keterangan |
+|------|---------|------------|
+| `title` | `''` | Judul (truncate) |
+| `meta` | `null` | Sub-teks baris kedua |
+| `href` | `null` | Bila diisi → baris jadi link + chevron |
+| slot `leading` / `trailing` | — | Ikon depan (dalam kotak) / konten kanan (badge) |
+
+### `<x-section-card>` — kartu putih + header opsional
+
+```blade
+<x-section-card title="Menunggu Respon" subtitle="5 tiket" body-class="p-3 space-y-2">
+    <x-slot:actions><x-outline-button>Lihat semua</x-outline-button></x-slot:actions>
+    {{-- isi: list-row, dll --}}
+</x-section-card>
+```
+
+| Prop | Default | Keterangan |
+|------|---------|------------|
+| `title` / `subtitle` | `null` | Header kartu (disembunyikan bila kosong) |
+| `bodyClass` | `p-5` | Padding body; set `p-0`/`p-3` utk daftar edge-to-edge |
+| slot `actions` | — | Aksi di kanan header |
+
+### `<x-ticket-card>` — kartu tiket lengkap
+
+Accent bar prioritas · header no+status · judul+chip · journey row (Dilapor ⇢ Umur/SLA) · meta lokasi/teknisi · footer aksi bertakik. Aksi `wire:click` menargetkan komponen induk: `openRespond(id)` · `openEdit(id)` · `requestDelete(id)`.
+
+```blade
+{{-- pelapor: editable saat status Open --}}
+<x-ticket-card :row="$row" :editable="$row->status_id == $this->openStatusId"
+    deleteTitle="Batalkan Tiket" :deleteMessage="'Yakin batalkan tiket ' . $row->ticket_no . '?'" />
+
+{{-- teknisi: tampilkan lokasi, selalu editable --}}
+<x-ticket-card :row="$row" show-location deleteTitle="Hapus Tiket" />
+```
+
+| Prop | Default | Keterangan |
+|------|---------|------------|
+| `row` | — (wajib) | Objek baris query (ticket_no, title, status(+color), priority(+color), category, location, technician, reported_at, age_label, overdue, is_closed, comment_count, id) |
+| `editable` | `true` | Tampilkan tombol Edit + Hapus |
+| `showLocation` | `false` | Tampilkan lokasi (tampilan teknisi) |
+| `lockedNote` | `terkunci (diproses)` | Teks saat tidak editable |
+| `deleteTitle` / `deleteMessage` | `Hapus Tiket` / auto | Judul & pesan konfirmasi hapus |
+
+**Kapan pakai yang mana:** angka ringkas → `stat-tile` · daftar ringkas → `section-card` + `list-row` · kartu entitas tiket → `ticket-card` · badge warna dari DB → `color-pill`. Jangan bikin kartu manual `<div class="bg-canvas border...">` — pakai `<x-section-card>`.
+
+---
+
 ## Aturan Umum
 
 1. **Jangan pakai `!important` override** — pilih komponen yang tepat

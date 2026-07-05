@@ -46,15 +46,16 @@ new class extends Component {
     #[Computed]
     public function rows()
     {
-        $q = DB::table('ticket_categories')
-            ->select('id', 'name', 'code', 'description', 'is_active')
-            ->orderBy('name');
+        $q = DB::table('ticket_categories as c')
+            ->leftJoin('departments as sec', 'sec.id', '=', 'c.sector_id')
+            ->select('c.id', 'c.name', 'c.code', 'c.description', 'c.is_active', 'sec.name as sector')
+            ->orderBy('c.name');
 
         if (trim($this->searchKeyword) !== '') {
             $kw = mb_strtoupper(trim($this->searchKeyword));
             $q->where(function ($w) use ($kw) {
-                $w->whereRaw('UPPER(name) LIKE ?', ["%{$kw}%"])
-                  ->orWhereRaw('UPPER(code) LIKE ?', ["%{$kw}%"]);
+                $w->whereRaw('UPPER(c.name) LIKE ?', ["%{$kw}%"])
+                  ->orWhereRaw('UPPER(c.code) LIKE ?', ["%{$kw}%"]);
             });
         }
 
@@ -115,6 +116,7 @@ new class extends Component {
                                 <th>ID</th>
                                 <th>Nama Kategori</th>
                                 <th>Kode</th>
+                                <th>Sektor</th>
                                 <th>Deskripsi</th>
                                 <th class="ds-c">Status</th>
                                 <th class="ds-c">Aksi</th>
@@ -126,6 +128,13 @@ new class extends Component {
                                     <td class="ds-td-token">{{ $row->id }}</td>
                                     <td class="ds-td-strong">{{ $row->name }}</td>
                                     <td>{{ $row->code ?: '—' }}</td>
+                                    <td>
+                                        @if (!empty($row->sector))
+                                            <x-badge variant="brand">{{ $row->sector }}</x-badge>
+                                        @else
+                                            <span class="text-xs text-muted-soft">—</span>
+                                        @endif
+                                    </td>
                                     <td class="max-w-md truncate">{{ $row->description ?: '—' }}</td>
                                     <td class="ds-c">
                                         <x-badge :variant="$row->is_active ? 'success' : 'gray'">
@@ -142,7 +151,7 @@ new class extends Component {
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="px-6 py-10">
+                                    <td colspan="7" class="px-6 py-10">
                                         <div class="flex flex-col items-center justify-center gap-3">
                                             <svg class="w-12 h-12 text-muted-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
                                             <p class="text-base font-medium text-muted dark:text-gray-400">Data kategori tidak ditemukan.</p>

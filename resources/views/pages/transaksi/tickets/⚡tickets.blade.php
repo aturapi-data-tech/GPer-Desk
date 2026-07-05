@@ -12,12 +12,46 @@ new class extends Component {
 
     public string $searchKeyword = '';
     public string $filterStatus  = '';
+    public string $filterSector  = '';
     public int    $itemsPerPage  = 10;
 
     public function mount(): void
     {
-        // Halaman teknisi/admin — pelapor biasa diarahkan ke "Tiket Saya".
-        abort_unless(auth()->user()?->hasAnyRole(['admin', 'manager', 'teknisi']), 403);
+        // Pelapor biasa diarahkan ke "Tiket Saya". Teknisi/admin menangani;
+        // pengawas (manager/direktur) hanya melihat daftar (read-only).
+        abort_unless(auth()->user()?->canViewAllTickets(), 403);
+    }
+
+    /** Handler = boleh merespon/menangani (teknisi/admin). */
+    public function isHandler(): bool
+    {
+        return (bool) auth()->user()?->canHandleTickets();
+    }
+
+    /** Kelola = boleh buat/edit/hapus tiket. Admin saja. */
+    public function canManage(): bool
+    {
+        return (bool) auth()->user()?->canManageTickets();
+    }
+
+    /** Teknisi murni → daftar di-scope ke sektornya. */
+    public function isSectorTech(): bool
+    {
+        return (bool) auth()->user()?->isSectorTechnician();
+    }
+
+    /** Nama sektor user login (badge konteks teknisi). */
+    public function mySectorName(): ?string
+    {
+        $sid = auth()->user()?->sector_id;
+        return $sid ? DB::table('departments')->where('id', $sid)->value('name') : null;
+    }
+
+    #[Computed]
+    public function sectors(): array
+    {
+        return DB::table('departments')->where('is_active', 1)->where('is_sector', 1)
+            ->orderBy('name')->pluck('name', 'id')->all();
     }
 
     private function humanDur(int $s): string
@@ -49,10 +83,11 @@ new class extends Component {
     public function updatedSearchKeyword(): void { $this->resetPage(); }
     public function updatedItemsPerPage(): void  { $this->resetPage(); }
     public function updatedFilterStatus(): void   { $this->resetPage(); }
+    public function updatedFilterSector(): void   { $this->resetPage(); }
 
     public function resetFilters(): void
     {
-        $this->reset(['searchKeyword', 'filterStatus']);
+        $this->reset(['searchKeyword', 'filterStatus', 'filterSector']);
         $this->itemsPerPage = 10;
         $this->resetPage();
     }
@@ -81,12 +116,14 @@ new class extends Component {
             ->leftJoin('ticket_statuses as s', 's.id', '=', 't.status_id')
             ->leftJoin('locations as l', 'l.id', '=', 't.location_id')
             ->leftJoin('users as u', 'u.id', '=', 't.technician_id')
+            ->leftJoin('departments as sec', 'sec.id', '=', 't.sector_id')
             ->select(
                 't.id', 't.ticket_no', 't.title',
                 'c.name as category',
+                'sec.name as sector',
                 'p.name as priority', 'p.color as priority_color',
                 's.name as status', 's.color as status_color', 's.is_closed',
-                'l.name as location',
+                'l.name as location', 't.location_detail',
                 'u.name as technician',
                 'p.sla_hours',
                 DB::raw("TO_CHAR(t.reported_at, 'dd/mm/yyyy HH24:MI') as reported_at"),
@@ -95,6 +132,13 @@ new class extends Component {
                 DB::raw('(SELECT COUNT(*) FROM ticket_comments tc WHERE tc.ticket_id = t.id) as comment_count')
             )
             ->orderByDesc('t.id');
+
+        // Routing: teknisi murni hanya lihat tiket sektornya; admin/manager/direktur lihat semua.
+        if ($this->isSectorTech()) {
+            $q->where('t.sector_id', auth()->user()->sector_id);
+        } elseif ($this->filterSector !== '') {
+            $q->where('t.sector_id', (int) $this->filterSector);
+        }
 
         if ($this->filterStatus !== '') {
             $q->where('t.status_id', $this->filterStatus);
@@ -117,7 +161,7 @@ new class extends Component {
 
     <x-page-title
         title="Kelola Tiket"
-        subtitle="Semua tiket — respon, update progress & status" />
+        subtitle="Teknisi: respon tiket sektornya · Admin: kelola semua · Manager/Direktur: pantau" />
 
     <div class="w-full h-[calc(100vh-5rem)] flex flex-col bg-surface-soft dark:bg-gray-900">
         <div class="flex flex-col flex-1 min-h-0 px-6 pt-2 pb-6">
@@ -142,6 +186,23 @@ new class extends Component {
                                 @endforeach
                             </x-select-input>
                         </div>
+                        {{-- Sektor: teknisi terkunci ke sektornya (badge); lainnya bisa filter --}}
+                        @if ($this->isSectorTech())
+                            <div class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-brand-green/10 text-brand-green dark:bg-brand-lime/15 dark:text-brand-lime">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" /></svg>
+                                Sektor: {{ $this->mySectorName() ?? '—' }}
+                            </div>
+                        @else
+                            <div class="w-44">
+                                <x-input-label for="filterSector" value="Sektor" class="sr-only" />
+                                <x-select-input id="filterSector" wire:model.live="filterSector">
+                                    <option value="">Semua Sektor</option>
+                                    @foreach ($this->sectors as $id => $name)
+                                        <option value="{{ $id }}">{{ $name }}</option>
+                                    @endforeach
+                                </x-select-input>
+                            </div>
+                        @endif
                     </div>
 
                     <div class="flex items-center justify-end gap-2">
@@ -154,90 +215,35 @@ new class extends Component {
                                 <option value="50">50</option>
                             </x-select-input>
                         </div>
-                        <x-primary-button type="button" wire:click="openCreate">
-                            + Tiket Baru
-                        </x-primary-button>
+                        @if ($this->canManage())
+                            <x-primary-button type="button" wire:click="openCreate">
+                                + Tiket Baru
+                            </x-primary-button>
+                        @endif
                         <x-toolbar-refresh-reset :label="null" />
                     </div>
                 </div>
             </div>
 
-            {{-- TABLE WRAPPER --}}
-            <div class="mt-4 flex flex-col flex-1 min-h-0 bg-canvas border border-hairline shadow-sm rounded-2xl dark:border-gray-700 dark:bg-gray-900">
-                <div class="flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-t-2xl">
-                    <table class="ds-table">
-                        <thead class="sticky top-0 z-10">
-                            <tr>
-                                <th>No. Tiket</th>
-                                <th>Judul</th>
-                                <th>Kategori</th>
-                                <th class="ds-c">Prioritas</th>
-                                <th class="ds-c">Status</th>
-                                <th>Lokasi</th>
-                                <th>Teknisi</th>
-                                <th>Dilapor</th>
-                                <th class="ds-c">Umur / SLA</th>
-                                <th class="ds-c">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($this->rows as $row)
-                                <tr wire:key="tkt-{{ $row->id }}">
-                                    <td class="ds-td-token">{{ $row->ticket_no }}</td>
-                                    <td class="ds-td-strong max-w-xs truncate">{{ $row->title }}</td>
-                                    <td>{{ $row->category ?: '—' }}</td>
-                                    <td class="ds-c">
-                                        @if ($row->priority)
-                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium text-white"
-                                                  style="background: {{ $row->priority_color }}">{{ $row->priority }}</span>
-                                        @else — @endif
-                                    </td>
-                                    <td class="ds-c">
-                                        @if ($row->status)
-                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium text-white"
-                                                  style="background: {{ $row->status_color }}">{{ $row->status }}</span>
-                                        @else — @endif
-                                    </td>
-                                    <td>{{ $row->location ?: '—' }}</td>
-                                    <td>{{ $row->technician ?: '—' }}</td>
-                                    <td class="text-xs text-muted">{{ $row->reported_at ?: '—' }}</td>
-                                    <td class="ds-c">
-                                        @if ($row->overdue)
-                                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                                                ⚠ {{ $row->age_label }}
-                                            </span>
-                                        @else
-                                            <span class="text-xs {{ $row->is_closed ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted' }}">{{ $row->age_label }}</span>
-                                        @endif
-                                    </td>
-                                    <td class="ds-c">
-                                        <div class="flex items-center justify-center gap-2">
-                                            <x-outline-button type="button" wire:click="openRespond({{ $row->id }})">
-                                                Respon
-                                                @if ($row->comment_count > 0)
-                                                    <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-brand-green text-white dark:bg-brand-lime dark:text-gray-900">{{ $row->comment_count }}</span>
-                                                @endif
-                                            </x-outline-button>
-                                            <x-action-edit wire:click="openEdit({{ $row->id }})" />
-                                            <x-action-delete :action="'requestDelete(' . $row->id . ')'"
-                                                title="Hapus Tiket" message="Yakin hapus tiket {{ $row->ticket_no }}?" />
-                                        </div>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="10" class="px-6 py-10">
-                                        <div class="flex flex-col items-center justify-center gap-3">
-                                            <svg class="w-12 h-12 text-muted-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                            <p class="text-base font-medium text-muted dark:text-gray-400">Belum ada tiket.</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+            {{-- CARD GRID (gaya tiket) --}}
+            <div class="mt-4 flex flex-col flex-1 min-h-0">
+                <div class="flex-1 min-h-0 overflow-y-auto pb-2 pr-1">
+                    @if ($this->rows->count())
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                            @foreach ($this->rows as $row)
+                                <x-ticket-card wire:key="tkt-{{ $row->id }}" :row="$row" show-location
+                                    :editable="$this->canManage()" lockedNote=""
+                                    deleteTitle="Hapus Tiket" />
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="flex flex-col items-center justify-center gap-3 py-20">
+                            <svg class="w-12 h-12 text-muted-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                            <p class="text-base font-medium text-muted dark:text-gray-400">Belum ada tiket.</p>
+                        </div>
+                    @endif
                 </div>
-                <div class="sticky bottom-0 z-10 px-4 py-3 bg-canvas border-t border-hairline rounded-b-2xl dark:bg-gray-900 dark:border-gray-700">
+                <div class="pt-3 mt-auto">
                     {{ $this->rows->links() }}
                 </div>
             </div>

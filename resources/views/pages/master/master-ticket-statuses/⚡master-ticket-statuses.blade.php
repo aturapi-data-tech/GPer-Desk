@@ -105,10 +105,7 @@ new class extends Component {
                                 <tr wire:key="tst-{{ $row->id }}">
                                     <td class="ds-td-token">{{ $row->id }}</td>
                                     <td class="ds-td-strong">
-                                        <span class="inline-flex items-center gap-2">
-                                            <span class="inline-block w-3 h-3 rounded-full" style="background: {{ $row->color }}"></span>
-                                            {{ $row->name }}
-                                        </span>
+                                        <x-color-pill :color="$row->color" dot>{{ $row->name }}</x-color-pill>
                                     </td>
                                     <td class="ds-c">{{ $row->sort_order }}</td>
                                     <td class="ds-c"><span class="font-mono text-xs">{{ $row->color }}</span></td>

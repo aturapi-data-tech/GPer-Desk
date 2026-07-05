@@ -14,16 +14,37 @@ class User extends Authenticatable
     use HasFactory, Notifiable, HasRoles;
 
     /**
-     * Profesi klinis user untuk pencatatan TTD CPPT/SBAR.
+     * Kapabilitas tiket — sumber tunggal supaya tidak drift antar komponen.
      *
-     * User multi-role (mis. Perawat + Dokter, Perawat + Manager) tercatat
-     * dengan profesi yang salah kalau diambil dari roles->first() — urutan
-     * role di pivot arbitrer. Kolom users.myuser_profesi (di-set di menu
-     * User Control) jadi penentu tetap; kalau kosong fallback ke role pertama.
+     * Konsep peran (GPER-Desk):
+     *  - pelapor (tanpa role) : hanya lapor & pantau tiket sendiri ("Tiket Saya").
+     *  - teknisi / admin      : HANDLER — respon, ubah status, tutup, assign, CRUD tiket.
+     *  - manager / direktur   : PENGAWAS — lihat semua tiket (read-only), TIDAK menangani.
+     *                           (manager juga kelola Master GPER — diatur di AppMenu.)
      */
-    public function profesiKlinis(): string
+
+    /** Boleh MENANGANI tiket: respon, ubah status/tutup, assign (teknisi & admin). Bukan CRUD. */
+    public function canHandleTickets(): bool
     {
-        return $this->myuser_profesi ?: ($this->roles->first()->name ?? '');
+        return $this->hasAnyRole(['admin', 'teknisi']);
+    }
+
+    /** Boleh MENGELOLA tiket: buat / edit / hapus. Hanya admin. */
+    public function canManageTickets(): bool
+    {
+        return $this->hasRole('admin');
+    }
+
+    /** Teknisi murni (di-scope ke sektornya) — bukan admin/manager/direktur yang lihat semua sektor. */
+    public function isSectorTechnician(): bool
+    {
+        return $this->hasRole('teknisi') && ! $this->hasAnyRole(['admin', 'manager', 'direktur']);
+    }
+
+    /** Boleh melihat SEMUA tiket (pengawas + handler): halaman "Kelola Tiket" & dashboard global. */
+    public function canViewAllTickets(): bool
+    {
+        return $this->hasAnyRole(['admin', 'manager', 'teknisi', 'direktur']);
     }
 
     /**

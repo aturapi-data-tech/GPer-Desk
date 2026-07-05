@@ -2,6 +2,7 @@
 
 use Livewire\Component;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Http\Traits\WithRenderVersioning\WithRenderVersioningTrait;
@@ -19,11 +20,19 @@ new class extends Component {
     public string $email = '';
     public string $password = '';
     public string $password_confirmation = '';
-    public string $myuser_profesi = '';
+    public string $sector_id = ''; // sektor penanganan (khusus teknisi)
 
     public function mount(): void
     {
         $this->registerAreas(['modal']);
+    }
+
+    /** Sektor penanganan (departemen is_sector=1): IT, CSSD, IPS. */
+    #[Computed]
+    public function sectors(): array
+    {
+        return DB::table('departments')->where('is_active', 1)->where('is_sector', 1)
+            ->orderBy('name')->pluck('name', 'id')->all();
     }
 
     #[On('userControl.openCreate')]
@@ -58,7 +67,7 @@ new class extends Component {
         $this->userId = $user->id;
         $this->name = $user->name ?? '';
         $this->email = $user->email ?? '';
-        $this->myuser_profesi = $user->myuser_profesi ?? '';
+        $this->sector_id = $user->sector_id ? (string) $user->sector_id : '';
 
         $this->incrementVersion('modal');
         $this->dispatch('open-modal', name: 'user-control-actions');
@@ -77,7 +86,7 @@ new class extends Component {
         $rules = [
             'name'           => 'required|string|max:100',
             'email'          => 'required|email|max:100|unique:users,email',
-            'myuser_profesi' => 'nullable|string|max:30',
+            'sector_id'      => 'required|integer|exists:departments,id',
             'password'       => 'required|string|min:6|confirmed',
         ];
 
@@ -106,7 +115,7 @@ new class extends Component {
             'name'           => 'Nama User',
             'email'          => 'Email',
             'password'       => 'Password',
-            'myuser_profesi' => 'Profesi / Jabatan',
+            'sector_id'      => 'Sektor',
         ];
     }
 
@@ -119,7 +128,7 @@ new class extends Component {
                 $data = [
                     'name'           => $this->name,
                     'email'          => $this->email,
-                    'myuser_profesi' => $this->myuser_profesi ?: null,
+                    'sector_id'      => $this->sector_id !== '' ? (int) $this->sector_id : null,
                     'updated_at'     => DB::raw('SYSDATE'),
                 ];
 
@@ -176,7 +185,7 @@ new class extends Component {
         $this->resetVersion();
         $this->formMode = 'create';
         $this->userId = null;
-        $this->reset(['name', 'email', 'password', 'password_confirmation', 'myuser_profesi']);
+        $this->reset(['name', 'email', 'password', 'password_confirmation', 'sector_id']);
     }
 };
 ?>
@@ -245,19 +254,22 @@ new class extends Component {
                             <x-input-label value="Email *" class="mb-1" />
                             <x-text-input wire:model="email" type="email" class="w-full"
                                 placeholder="user@gper.com" :error="$errors->has('email')"
-                                x-on:keydown.enter.prevent="$nextTick(() => $refs.inputProfesi?.querySelector('input')?.focus())" />
+                                x-on:keydown.enter.prevent="$nextTick(() => $refs.inputPassword?.querySelector('input')?.focus())" />
                             <x-input-error :messages="$errors->get('email')" class="mt-1" />
                         </div>
 
-                        {{-- Profesi / Jabatan --}}
-                        <div x-ref="inputProfesi">
-                            <x-input-label value="Profesi / Jabatan" class="mb-1" />
-                            <x-text-input wire:model="myuser_profesi" class="w-full"
-                                placeholder="mis. Teknisi IT, Manager, Direktur" :error="$errors->has('myuser_profesi')"
-                                x-on:keydown.enter.prevent="$nextTick(() => $refs.inputPassword?.querySelector('input')?.focus())" />
-                            <x-input-error :messages="$errors->get('myuser_profesi')" class="mt-1" />
+                        {{-- Sektor Penanganan (khusus teknisi) --}}
+                        <div>
+                            <x-input-label value="Sektor Penanganan *" class="mb-1" />
+                            <x-select-input wire:model="sector_id" class="w-full" :error="$errors->has('sector_id')">
+                                <option value="">— pilih sektor —</option>
+                                @foreach ($this->sectors as $id => $name)
+                                    <option value="{{ $id }}">{{ $name }}</option>
+                                @endforeach
+                            </x-select-input>
+                            <x-input-error :messages="$errors->get('sector_id')" class="mt-1" />
                             <p class="mt-1 text-xs text-muted dark:text-gray-400">
-                                Opsional — label jabatan yang tampil di profil & sidebar.
+                                Wajib. Untuk <strong>teknisi</strong> menentukan tiket sektor mana (IT / CSSD / IPS) yang ia tangani.
                             </p>
                         </div>
 

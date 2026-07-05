@@ -240,3 +240,8 @@
 .t-overline { font-family:var(--sans); font-size:12px;   font-weight:600; line-height:1.4;  letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
 .t-code     { font-family:var(--mono); font-size:13px; }
 .t-num      { font-variant-numeric:tabular-nums; }
+
+/* Ticker ulasan (Suara Pasien) — jalan vertikal bawah→atas, seamless (list digandakan) */
+@keyframes marquee-up { 0% { transform: translateY(0); } 100% { transform: translateY(-50%); } }
+.animate-marquee-up { animation: marquee-up 40s linear infinite; }
+.animate-marquee-up:hover { animation-play-state: paused; }

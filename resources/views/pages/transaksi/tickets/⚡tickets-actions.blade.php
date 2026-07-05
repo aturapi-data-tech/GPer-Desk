@@ -20,26 +20,67 @@ new class extends Component {
     public array $form = [
         'title'         => '',
         'description'   => '',
+        'sector_id'     => '',
         'category_id'   => '',
         'priority_id'   => '',
-        'location_id'   => '',
-        'department_id' => '',
-        'technician_id' => '',
-        'part_cost'     => 0,
+        'location_id'     => '',
+        'location_detail' => '',
+        'technician_id'   => '',
+        'part_cost'       => 0,
     ];
 
     public function mount(): void { $this->registerAreas(['modal']); }
 
-    #[Computed] public function categories(): array { return DB::table('ticket_categories')->where('is_active', 1)->orderBy('name')->pluck('name', 'id')->all(); }
+    /** Guard: buat/edit/hapus tiket hanya untuk admin. Teknisi cukup merespon; pengawas read-only. */
+    private function ensureHandler(): bool
+    {
+        if (auth()->user()?->canManageTickets()) {
+            return true;
+        }
+        $this->dispatch('toast', type: 'error', message: 'Hanya admin yang bisa membuat/mengubah/menghapus tiket.');
+        return false;
+    }
+
+    /** Ganti sektor → reset kategori & teknisi (keduanya terikat sektor). */
+    public function updated($property): void
+    {
+        if ($property === 'form.sector_id') {
+            $this->form['category_id']   = '';
+            $this->form['technician_id'] = '';
+        }
+    }
+
+    /** Sektor penanganan (departemen is_sector=1): IT, CSSD, IPS. */
+    #[Computed] public function sectors(): array { return DB::table('departments')->where('is_active', 1)->where('is_sector', 1)->orderBy('name')->pluck('name', 'id')->all(); }
+
+    /** Kategori terfilter sesuai sektor terpilih (kosong bila sektor belum dipilih). */
+    #[Computed] public function categories(): array
+    {
+        if ($this->form['sector_id'] === '') {
+            return [];
+        }
+        return DB::table('ticket_categories')->where('is_active', 1)
+            ->where('sector_id', (int) $this->form['sector_id'])
+            ->orderBy('name')->pluck('name', 'id')->all();
+    }
     #[Computed] public function priorities(): array { return DB::table('priorities')->where('is_active', 1)->orderByDesc('level')->pluck('name', 'id')->all(); }
     #[Computed] public function statuses(): array   { return DB::table('ticket_statuses')->where('is_active', 1)->orderBy('sort_order')->pluck('name', 'id')->all(); }
     #[Computed] public function locations(): array  { return DB::table('locations')->where('is_active', 1)->orderBy('name')->pluck('name', 'id')->all(); }
     #[Computed] public function departments(): array { return DB::table('departments')->where('is_active', 1)->orderBy('name')->pluck('name', 'id')->all(); }
-    #[Computed] public function technicians(): array { return DB::table('users')->orderBy('name')->pluck('name', 'id')->all(); }
+    /** Teknisi milik sektor terpilih (assign dibatasi ke tim sektor itu). */
+    #[Computed] public function technicians(): array
+    {
+        if ($this->form['sector_id'] === '') {
+            return [];
+        }
+        return DB::table('users')->where('sector_id', (int) $this->form['sector_id'])
+            ->orderBy('name')->pluck('name', 'id')->all();
+    }
 
     #[On('tickets.openCreate')]
     public function openCreate(): void
     {
+        if (!$this->ensureHandler()) return;
         $this->resetForm();
         $this->formMode   = 'create';
         $this->originalId = 0;
@@ -52,6 +93,7 @@ new class extends Component {
     #[On('tickets.openEdit')]
     public function openEdit(int $id): void
     {
+        if (!$this->ensureHandler()) return;
         $row = DB::table('tickets')->where('id', $id)->first();
         if (!$row) return;
 
@@ -62,11 +104,12 @@ new class extends Component {
         $this->form = [
             'title'         => (string) $row->title,
             'description'   => (string) ($row->description ?? ''),
+            'sector_id'     => $row->sector_id ? (string) $row->sector_id : '',
             'category_id'   => $row->category_id ? (string) $row->category_id : '',
             'priority_id'   => $row->priority_id ? (string) $row->priority_id : '',
-            'location_id'   => $row->location_id ? (string) $row->location_id : '',
-            'department_id' => $row->department_id ? (string) $row->department_id : '',
-            'technician_id' => $row->technician_id ? (string) $row->technician_id : '',
+            'location_id'     => $row->location_id ? (string) $row->location_id : '',
+            'location_detail' => (string) ($row->location_detail ?? ''),
+            'technician_id'   => $row->technician_id ? (string) $row->technician_id : '',
             'part_cost'     => (float) ($row->part_cost ?? 0),
         ];
 
@@ -78,6 +121,7 @@ new class extends Component {
     #[On('tickets.requestDelete')]
     public function delete(int $id): void
     {
+        if (!$this->ensureHandler()) return;
         DB::table('tickets')->where('id', $id)->delete();
         $this->dispatch('toast', type: 'success', message: 'Tiket berhasil dihapus.');
         $this->dispatch('tickets.saved');
@@ -107,43 +151,57 @@ new class extends Component {
 
     public function save(): void
     {
+        if (!$this->ensureHandler()) return;
+
         $rules = [
             'form.title'         => 'required|string|max:255',
             'form.description'   => 'nullable|string|max:2000',
+            'form.sector_id'     => 'required|integer|exists:departments,id',
             'form.category_id'   => 'required|integer|exists:ticket_categories,id',
             'form.priority_id'   => 'required|integer|exists:priorities,id',
-            'form.location_id'   => 'nullable|integer|exists:locations,id',
-            'form.department_id' => 'nullable|integer|exists:departments,id',
-            'form.technician_id' => 'nullable|integer|exists:users,id',
+            'form.location_id'     => 'required|integer|exists:locations,id',
+            'form.location_detail' => 'nullable|string|max:500',
+            'form.technician_id'   => 'nullable|integer|exists:users,id',
             'form.part_cost'     => 'required|numeric|min:0',
         ];
 
         $messages = [
             'form.title.required'       => 'Judul tiket wajib diisi.',
+            'form.sector_id.required'   => 'Sektor tujuan wajib dipilih.',
             'form.category_id.required' => 'Kategori wajib dipilih.',
             'form.priority_id.required' => 'Prioritas wajib dipilih.',
+            'form.location_id.required' => 'Lokasi wajib dipilih.',
         ];
 
         $attributes = [
             'form.title'         => 'Judul',
+            'form.sector_id'     => 'Sektor',
             'form.category_id'   => 'Kategori',
             'form.priority_id'   => 'Prioritas',
-            'form.location_id'   => 'Lokasi',
-            'form.department_id' => 'Departemen',
-            'form.technician_id' => 'Teknisi',
+            'form.location_id'     => 'Lokasi',
+            'form.location_detail' => 'Detail Ruangan',
+            'form.technician_id'   => 'Teknisi',
             'form.part_cost'     => 'Biaya Part',
         ];
 
         $this->validate($rules, $messages, $attributes);
 
+        // Kategori harus milik sektor terpilih.
+        $catSector = DB::table('ticket_categories')->where('id', (int) $this->form['category_id'])->value('sector_id');
+        if ((int) $catSector !== (int) $this->form['sector_id']) {
+            $this->addError('form.category_id', 'Kategori tidak sesuai sektor yang dipilih.');
+            return;
+        }
+
         $payload = [
             'title'         => trim($this->form['title']),
             'description'   => $this->form['description'] !== '' ? trim($this->form['description']) : null,
+            'sector_id'     => (int) $this->form['sector_id'],
             'category_id'   => (int) $this->form['category_id'],
             'priority_id'   => (int) $this->form['priority_id'],
-            'location_id'   => $this->form['location_id'] !== '' ? (int) $this->form['location_id'] : null,
-            'department_id' => $this->form['department_id'] !== '' ? (int) $this->form['department_id'] : null,
-            'technician_id' => $this->form['technician_id'] !== '' ? (int) $this->form['technician_id'] : null,
+            'location_id'     => $this->form['location_id'] !== '' ? (int) $this->form['location_id'] : null,
+            'location_detail' => $this->form['location_detail'] !== '' ? trim($this->form['location_detail']) : null,
+            'technician_id'   => $this->form['technician_id'] !== '' ? (int) $this->form['technician_id'] : null,
             'part_cost'     => (float) $this->form['part_cost'],
             'updated_at'    => now(),
         ];
@@ -155,7 +213,8 @@ new class extends Component {
             $payload['reported_by'] = auth()->id();
             $payload['reported_at'] = now();
             $payload['created_at']  = now();
-            $id = DB::table('tickets')->insertGetId($payload);
+            DB::table('tickets')->insert($payload);
+            $id = (int) DB::table('tickets')->where('ticket_no', $payload['ticket_no'])->value('id');
             TicketLog::log($id, 'created', null, null, 'Tiket dibuat');
             if ($payload['technician_id']) {
                 TicketLog::log($id, 'assigned', null, $this->userName($payload['technician_id']), 'Teknisi ditugaskan');
@@ -189,8 +248,8 @@ new class extends Component {
     private function resetForm(): void
     {
         $this->form = [
-            'title' => '', 'description' => '', 'category_id' => '', 'priority_id' => '',
-            'location_id' => '', 'department_id' => '', 'technician_id' => '', 'part_cost' => 0,
+            'title' => '', 'description' => '', 'sector_id' => '', 'category_id' => '', 'priority_id' => '',
+            'location_id' => '', 'location_detail' => '', 'technician_id' => '', 'part_cost' => 0,
         ];
         $this->ticketNo = '';
         $this->resetValidation();
@@ -243,7 +302,8 @@ new class extends Component {
                  x-data
                  x-on:focus-title.window="$nextTick(() => setTimeout(() => $refs.inputTitle?.focus(), 150))">
 
-                <x-border-form title="Informasi Tiket">
+                <div class="grid items-start grid-cols-1 gap-4 mx-auto max-w-5xl lg:grid-cols-2">
+                <x-border-form title="Detail Gangguan">
                     <div class="space-y-4">
                         {{-- Judul --}}
                         <div>
@@ -263,12 +323,25 @@ new class extends Component {
                             <x-input-error :messages="$errors->get('form.description')" class="mt-1" />
                         </div>
 
+                        {{-- Sektor tujuan (seperti memilih jasa kirim) --}}
+                        <div>
+                            <x-input-label value="Sektor Tujuan *" />
+                            <x-select-input wire:model.live="form.sector_id" class="w-full mt-1" :error="$errors->has('form.sector_id')">
+                                <option value="">— pilih sektor —</option>
+                                @foreach ($this->sectors as $id => $name)
+                                    <option value="{{ $id }}">{{ $name }}</option>
+                                @endforeach
+                            </x-select-input>
+                            <x-input-error :messages="$errors->get('form.sector_id')" class="mt-1" />
+                            <p class="mt-1 text-xs text-muted dark:text-gray-400">Menentukan tim penanganan (IT / CSSD / IPS). Kategori & teknisi menyesuaikan sektor.</p>
+                        </div>
+
                         {{-- Kategori / Prioritas --}}
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
                                 <x-input-label value="Kategori *" />
-                                <x-select-input wire:model.live="form.category_id" class="w-full mt-1" :error="$errors->has('form.category_id')">
-                                    <option value="">— pilih —</option>
+                                <x-select-input wire:model.live="form.category_id" class="w-full mt-1" :error="$errors->has('form.category_id')" :disabled="$form['sector_id'] === ''">
+                                    <option value="">{{ $form['sector_id'] === '' ? '— pilih sektor dulu —' : '— pilih —' }}</option>
                                     @foreach ($this->categories as $id => $name)
                                         <option value="{{ $id }}">{{ $name }}</option>
                                     @endforeach
@@ -286,12 +359,16 @@ new class extends Component {
                                 <x-input-error :messages="$errors->get('form.priority_id')" class="mt-1" />
                             </div>
                         </div>
+                    </div>
+                </x-border-form>
 
-                        {{-- Lokasi / Departemen / Teknisi --}}
+                <x-border-form title="Penugasan & Biaya">
+                    <div class="space-y-4">
+                        {{-- Lokasi / Detail Ruangan / Teknisi --}}
                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                             <div>
-                                <x-input-label value="Lokasi" />
-                                <x-select-input wire:model.live="form.location_id" class="w-full mt-1">
+                                <x-input-label value="Lokasi *" />
+                                <x-select-input wire:model.live="form.location_id" class="w-full mt-1" :error="$errors->has('form.location_id')">
                                     <option value="">— pilih —</option>
                                     @foreach ($this->locations as $id => $name)
                                         <option value="{{ $id }}">{{ $name }}</option>
@@ -300,24 +377,24 @@ new class extends Component {
                                 <x-input-error :messages="$errors->get('form.location_id')" class="mt-1" />
                             </div>
                             <div>
-                                <x-input-label value="Departemen Pelapor" />
-                                <x-select-input wire:model.live="form.department_id" class="w-full mt-1">
-                                    <option value="">— pilih —</option>
-                                    @foreach ($this->departments as $id => $name)
-                                        <option value="{{ $id }}">{{ $name }}</option>
-                                    @endforeach
-                                </x-select-input>
-                                <x-input-error :messages="$errors->get('form.department_id')" class="mt-1" />
+                                <x-input-label value="Detail Ruangan (opsional)" />
+                                <textarea wire:model.live="form.location_detail" rows="2" maxlength="500"
+                                    class="w-full mt-1 rounded-lg border-hairline bg-canvas text-body dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 focus:border-brand-green focus:ring-brand-green"
+                                    placeholder="Ruangan / titik detail kejadian..."></textarea>
+                                <x-input-error :messages="$errors->get('form.location_detail')" class="mt-1" />
                             </div>
                             <div>
                                 <x-input-label value="Teknisi" />
-                                <x-select-input wire:model.live="form.technician_id" class="w-full mt-1">
-                                    <option value="">— belum ditugaskan —</option>
+                                <x-select-input wire:model.live="form.technician_id" class="w-full mt-1" :disabled="$form['sector_id'] === ''">
+                                    <option value="">{{ $form['sector_id'] === '' ? '— pilih sektor dulu —' : '— belum ditugaskan —' }}</option>
                                     @foreach ($this->technicians as $id => $name)
                                         <option value="{{ $id }}">{{ $name }}</option>
                                     @endforeach
                                 </x-select-input>
                                 <x-input-error :messages="$errors->get('form.technician_id')" class="mt-1" />
+                                @if ($form['sector_id'] !== '' && empty($this->technicians))
+                                    <p class="mt-1 text-[11px] text-warning-deep dark:text-amber-300">Belum ada teknisi terdaftar di sektor ini.</p>
+                                @endif
                             </div>
                         </div>
 
@@ -333,6 +410,7 @@ new class extends Component {
                         </div>
                     </div>
                 </x-border-form>
+                </div>
             </div>
 
             {{-- FOOTER --}}

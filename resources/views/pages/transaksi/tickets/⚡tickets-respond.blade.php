@@ -17,9 +17,12 @@ new class extends Component {
     public string $ticketTitle = '';
     public string $statusName  = '';
     public string $statusColor = '#6b7280';
+    public string $reporterName    = '';  // pelapor (user atau nama anonim dari form publik)
+    public ?string $attachmentPath = null; // foto gangguan terlampir (opsional)
     public string $handlerName     = '';  // yang mengerjakan (technician)
     public string $firstResponder  = '';  // yang merespon pertama
     public string $firstRespondAt  = '';
+    public ?int   $reportedBy      = null; // id pelapor tiket (penentu hak komentar)
 
     public string $newComment = '';
 
@@ -32,15 +35,29 @@ new class extends Component {
 
     public function mount(): void { $this->registerAreas(['modal']); }
 
-    public function isPetugas(): bool
+    /** Handler = boleh menangani (respon penanganan, ubah status, tutup, assign). Teknisi/admin. */
+    public function isHandler(): bool
     {
-        return (bool) auth()->user()?->hasAnyRole(['admin', 'manager', 'teknisi']);
+        return (bool) auth()->user()?->canHandleTickets();
+    }
+
+    /** Boleh menulis komentar: handler ATAU pelapor tiket ini. Pengawas (manager/direktur) → read-only. */
+    public function canComment(): bool
+    {
+        return $this->isHandler() || ($this->reportedBy !== null && $this->reportedBy === auth()->id());
     }
 
     #[Computed]
     public function statusOptions(): array
     {
         return DB::table('ticket_statuses')->where('is_active', 1)->orderBy('sort_order')->pluck('name', 'id')->all();
+    }
+
+    /** ID status yang menutup tiket — dipakai utk mengubah tombol jadi "Selesaikan" + konfirmasi. */
+    #[Computed]
+    public function closedStatusIds(): array
+    {
+        return DB::table('ticket_statuses')->where('is_closed', 1)->pluck('id')->map(fn ($v) => (int) $v)->all();
     }
 
     /** Muat ulang info header tiket (status, pengerjaan, respon pertama). */
@@ -50,8 +67,10 @@ new class extends Component {
             ->leftJoin('ticket_statuses as s', 's.id', '=', 't.status_id')
             ->leftJoin('users as u', 'u.id', '=', 't.technician_id')
             ->leftJoin('users as fr', 'fr.id', '=', 't.first_responded_by')
+            ->leftJoin('users as rp', 'rp.id', '=', 't.reported_by')
             ->where('t.id', $this->ticketId)
-            ->select('t.ticket_no', 't.title', 't.status_id', 't.resolution',
+            ->select('t.ticket_no', 't.title', 't.status_id', 't.resolution', 't.reported_by',
+                't.reporter_name', 't.attachment_path', 'rp.name as reporter_user',
                 's.name as status', 's.color as status_color',
                 'u.name as handler', 'fr.name as first_resp',
                 DB::raw("TO_CHAR(t.first_responded_at, 'dd/mm/yyyy HH24:MI') as first_resp_at"))
@@ -61,6 +80,8 @@ new class extends Component {
 
         $this->ticketNo       = (string) $t->ticket_no;
         $this->ticketTitle    = (string) $t->title;
+        $this->reporterName   = (string) ($t->reporter_user ?: $t->reporter_name ?: '');
+        $this->attachmentPath = $t->attachment_path ?: null;
         $this->statusName     = (string) ($t->status ?? '-');
         $this->statusColor    = (string) ($t->status_color ?? '#6b7280');
         $this->handlerName    = (string) ($t->handler ?? '');
@@ -68,6 +89,7 @@ new class extends Component {
         $this->firstRespondAt = (string) ($t->first_resp_at ?? '');
         $this->updStatus      = $t->status_id ? (string) $t->status_id : '';
         $this->updResolution  = (string) ($t->resolution ?? '');
+        $this->reportedBy     = $t->reported_by ? (int) $t->reported_by : null;
     }
 
     #[On('tickets.openRespond')]
@@ -169,6 +191,11 @@ new class extends Component {
 
     public function addComment(): void
     {
+        if (!$this->canComment()) {
+            $this->dispatch('toast', type: 'error', message: 'Mode pengawas — tidak dapat menambah respon.');
+            return;
+        }
+
         $this->validate(
             ['newComment' => 'required|string|max:2000'],
             ['newComment.required' => 'Respon tidak boleh kosong.'],
@@ -197,8 +224,7 @@ new class extends Component {
             $updates['first_responded_at'] = now();
         }
 
-        $isPetugas = auth()->user()?->hasAnyRole(['admin', 'manager', 'teknisi']);
-        if ($isPetugas && empty($ticket->technician_id)) {
+        if (auth()->user()?->canHandleTickets() && empty($ticket->technician_id)) {
             $updates['technician_id'] = $uid;
             TicketLog::log($this->ticketId, 'assigned', null, auth()->user()->name, 'Mulai mengerjakan (via respon)');
         }
@@ -219,8 +245,8 @@ new class extends Component {
     /** Petugas: update status + solusi/tindakan langsung dari modal Respon. */
     public function savePenanganan(): void
     {
-        if (!$this->isPetugas()) {
-            $this->dispatch('toast', type: 'error', message: 'Hanya petugas yang bisa update status/solusi.');
+        if (!$this->isHandler()) {
+            $this->dispatch('toast', type: 'error', message: 'Hanya teknisi/admin yang bisa update status/solusi.');
             return;
         }
 
@@ -282,7 +308,7 @@ new class extends Component {
 
     public function closeModal(): void
     {
-        $this->reset(['ticketId', 'ticketNo', 'ticketTitle', 'statusName', 'newComment', 'handlerName', 'firstResponder', 'firstRespondAt', 'updStatus', 'updResolution']);
+        $this->reset(['ticketId', 'ticketNo', 'ticketTitle', 'reporterName', 'attachmentPath', 'statusName', 'newComment', 'handlerName', 'firstResponder', 'firstRespondAt', 'updStatus', 'updResolution']);
         $this->statusColor = '#6b7280';
         $this->resetValidation();
         $this->dispatch('close-modal', name: 'tickets-respond');
@@ -303,12 +329,15 @@ new class extends Component {
                         <div class="flex items-center gap-2">
                             <span class="font-mono text-sm font-semibold text-brand-green dark:text-brand-lime">{{ $ticketNo }}</span>
                             @if ($statusName)
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
-                                      style="background: {{ $statusColor }}">{{ $statusName }}</span>
+                                <x-color-pill :color="$statusColor" dot>{{ $statusName }}</x-color-pill>
                             @endif
                         </div>
                         <h2 class="mt-1 text-lg font-semibold text-ink dark:text-gray-100">{{ $ticketTitle }}</h2>
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs">
+                            <span class="text-muted dark:text-gray-400">
+                                🙋 Pelapor:
+                                <span class="font-semibold text-ink dark:text-gray-100">{{ $reporterName ?: '—' }}</span>
+                            </span>
                             <span class="text-muted dark:text-gray-400">
                                 🔧 Dikerjakan:
                                 <span class="font-semibold text-ink dark:text-gray-100">{{ $handlerName ?: 'Belum ditugaskan' }}</span>
@@ -330,18 +359,18 @@ new class extends Component {
                 {{-- RINGKASAN WAKTU --}}
                 @php $s = $this->stats; @endphp
                 <div class="grid grid-cols-3 gap-2 mt-3">
-                    <div class="px-3 py-2 rounded-lg bg-surface-soft dark:bg-gray-800">
+                    <div class="px-3 py-2 rounded-xl border border-hairline bg-surface-soft dark:bg-gray-800 dark:border-gray-700">
                         <p class="text-[10px] uppercase tracking-wide text-muted-soft">Dibuat</p>
                         <p class="text-xs font-semibold text-body dark:text-gray-200">{{ $s['created'] ?? '-' }}</p>
                     </div>
-                    <div class="px-3 py-2 rounded-lg bg-surface-soft dark:bg-gray-800">
+                    <div class="px-3 py-2 rounded-xl border border-hairline bg-surface-soft dark:bg-gray-800 dark:border-gray-700">
                         <p class="text-[10px] uppercase tracking-wide text-muted-soft">Respon Pertama</p>
                         <p class="text-xs font-semibold text-body dark:text-gray-200">
                             {{ $s['first'] ?? '—' }}
                             @if (!empty($s['first_delta'])) <span class="text-brand-green dark:text-brand-lime">(+{{ $s['first_delta'] }})</span> @endif
                         </p>
                     </div>
-                    <div class="px-3 py-2 rounded-lg bg-surface-soft dark:bg-gray-800">
+                    <div class="px-3 py-2 rounded-xl border border-hairline bg-surface-soft dark:bg-gray-800 dark:border-gray-700">
                         <p class="text-[10px] uppercase tracking-wide text-muted-soft">Selesai</p>
                         <p class="text-xs font-semibold text-body dark:text-gray-200">
                             {{ $s['resolved'] ?? '—' }}
@@ -349,6 +378,16 @@ new class extends Component {
                         </p>
                     </div>
                 </div>
+
+                {{-- FOTO GANGGUAN (bila dilampirkan pelapor) --}}
+                @if ($attachmentPath)
+                    <div class="mt-3">
+                        <p class="text-[10px] uppercase tracking-wide text-muted-soft mb-1">Foto Gangguan</p>
+                        <a href="{{ asset('storage/' . $attachmentPath) }}" target="_blank" rel="noopener">
+                            <img src="{{ asset('storage/' . $attachmentPath) }}" alt="Foto gangguan" class="object-cover w-32 h-24 border rounded-lg border-hairline dark:border-gray-700 hover:opacity-90 transition" />
+                        </a>
+                    </div>
+                @endif
             </div>
 
             {{-- BODY: 2 kolom — KIRI Progress & Status, KANAN Chat & Respon --}}
@@ -377,10 +416,10 @@ new class extends Component {
                                     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide {{ $meta['chip'] }}">{{ $meta['tag'] }}</span>
                                     @if ($e['action'] === 'status_changed')
                                         @if ($e['from'])
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white" style="background: {{ $e['from_color'] }}">{{ $e['from'] }}</span>
+                                            <x-color-pill :color="$e['from_color']" size="sm">{{ $e['from'] }}</x-color-pill>
                                         @endif
                                         <svg class="w-4 h-4 text-muted-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold text-white ring-2 ring-offset-1 ring-amber-300" style="background: {{ $e['to_color'] }}">{{ $e['to'] }}</span>
+                                        <x-color-pill :color="$e['to_color']" size="sm" class="ring-2 ring-offset-1 ring-amber-300 dark:ring-offset-gray-900">{{ $e['to'] }}</x-color-pill>
                                     @elseif ($e['action'] === 'assigned')
                                         <span class="text-sm text-body dark:text-gray-300">{{ $e['to'] ? 'Ditugaskan ke' : 'Penugasan dilepas' }}</span>
                                         @if ($e['to'])
@@ -400,8 +439,8 @@ new class extends Component {
                         @endforelse
                     </div>
 
-                    {{-- PANEL PENANGANAN (khusus petugas) --}}
-                    @if ($this->isPetugas())
+                    {{-- PANEL PENANGANAN (khusus handler: teknisi/admin) --}}
+                    @if ($this->isHandler())
                         <div class="px-6 py-4 border-t border-hairline bg-amber-50/60 dark:bg-amber-900/10">
                             <div class="flex items-center gap-2 mb-2">
                                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">PENANGANAN</span>
@@ -410,7 +449,7 @@ new class extends Component {
                             <div class="space-y-2">
                                 <div>
                                     <x-input-label value="Status" class="mb-1" />
-                                    <x-select-input wire:model="updStatus" class="w-full" :error="$errors->has('updStatus')">
+                                    <x-select-input wire:model.live="updStatus" class="w-full" :error="$errors->has('updStatus')">
                                         <option value="">— pilih —</option>
                                         @foreach ($this->statusOptions as $id => $name)
                                             <option value="{{ $id }}">{{ $name }}</option>
@@ -426,11 +465,24 @@ new class extends Component {
                                     <x-input-error :messages="$errors->get('updResolution')" class="mt-1" />
                                 </div>
                             </div>
-                            <div class="flex justify-end mt-3">
-                                <x-primary-button type="button" wire:click="savePenanganan" wire:loading.attr="disabled" wire:target="savePenanganan">
-                                    <span wire:loading.remove wire:target="savePenanganan">Simpan Penanganan</span>
-                                    <span wire:loading wire:target="savePenanganan">Menyimpan...</span>
-                                </x-primary-button>
+                            @php $isClosing = $updStatus !== '' && in_array((int) $updStatus, $this->closedStatusIds, true); @endphp
+                            <div class="flex items-center justify-between gap-2 mt-3">
+                                <span class="text-[11px] font-medium {{ $isClosing ? 'text-success-deep dark:text-emerald-400' : 'text-transparent' }}">
+                                    ✓ Status ini menutup tiket & mencatat waktu penyelesaian.
+                                </span>
+                                @if ($isClosing)
+                                    <x-success-button type="button" wire:click="savePenanganan"
+                                        wire:confirm="Tandai tiket {{ $ticketNo }} SELESAI? Waktu penyelesaian akan dicatat."
+                                        wire:loading.attr="disabled" wire:target="savePenanganan">
+                                        <span wire:loading.remove wire:target="savePenanganan">Selesaikan Tiket</span>
+                                        <span wire:loading wire:target="savePenanganan">Menyimpan...</span>
+                                    </x-success-button>
+                                @else
+                                    <x-primary-button type="button" wire:click="savePenanganan" wire:loading.attr="disabled" wire:target="savePenanganan">
+                                        <span wire:loading.remove wire:target="savePenanganan">Simpan Penanganan</span>
+                                        <span wire:loading wire:target="savePenanganan">Menyimpan...</span>
+                                    </x-primary-button>
+                                @endif
                             </div>
                         </div>
                     @endif
@@ -474,18 +526,25 @@ new class extends Component {
                     {{-- input respon --}}
                     <div class="px-6 py-4 border-t border-hairline bg-canvas dark:bg-gray-900 dark:border-gray-700"
                         x-data x-on:focus-comment.window="$nextTick(() => setTimeout(() => $refs.cmt?.focus(), 150))">
-                        <textarea wire:model="newComment" x-ref="cmt" rows="2" maxlength="2000"
-                            wire:keydown.ctrl.enter="addComment"
-                            class="w-full rounded-lg border-hairline bg-canvas text-body dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 focus:border-brand-green focus:ring-brand-green"
-                            placeholder="Tulis balasan... (Ctrl+Enter untuk kirim)"></textarea>
-                        <x-input-error :messages="$errors->get('newComment')" class="mt-1" />
-                        <div class="flex justify-end gap-2 mt-2">
-                            <x-secondary-button type="button" wire:click="closeModal">Tutup</x-secondary-button>
-                            <x-primary-button type="button" wire:click="addComment" wire:loading.attr="disabled" wire:target="addComment">
-                                <span wire:loading.remove wire:target="addComment">Kirim Respon</span>
-                                <span wire:loading wire:target="addComment">Mengirim...</span>
-                            </x-primary-button>
-                        </div>
+                        @if ($this->canComment())
+                            <textarea wire:model="newComment" x-ref="cmt" rows="2" maxlength="2000"
+                                wire:keydown.ctrl.enter="addComment"
+                                class="w-full rounded-lg border-hairline bg-canvas text-body dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 focus:border-brand-green focus:ring-brand-green"
+                                placeholder="Tulis balasan... (Ctrl+Enter untuk kirim)"></textarea>
+                            <x-input-error :messages="$errors->get('newComment')" class="mt-1" />
+                            <div class="flex justify-end gap-2 mt-2">
+                                <x-secondary-button type="button" wire:click="closeModal">Tutup</x-secondary-button>
+                                <x-primary-button type="button" wire:click="addComment" wire:loading.attr="disabled" wire:target="addComment">
+                                    <span wire:loading.remove wire:target="addComment">Kirim Respon</span>
+                                    <span wire:loading wire:target="addComment">Mengirim...</span>
+                                </x-primary-button>
+                            </div>
+                        @else
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="text-xs italic text-muted-soft">👁 Mode pengawas — Anda hanya dapat melihat percakapan.</p>
+                                <x-secondary-button type="button" wire:click="closeModal">Tutup</x-secondary-button>
+                            </div>
+                        @endif
                     </div>
                 </div>
 
