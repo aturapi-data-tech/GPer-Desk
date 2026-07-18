@@ -107,6 +107,9 @@ new class extends Component {
                         <p class="mt-2 text-sm text-muted dark:text-gray-400">
                             <a href="{{ route('insiden.publik') }}" wire:navigate class="font-medium text-brand-green hover:underline dark:text-brand-lime">🔒 Sampaikan pengaduan / aspirasi karyawan (rahasia) →</a>
                         </p>
+                        <p class="mt-2 text-sm text-muted dark:text-gray-400">
+                            <a href="{{ route('ikp.publik') }}" wire:navigate class="font-medium text-brand-green hover:underline dark:text-brand-lime">🛡️ Laporkan Insiden Keselamatan Pasien (KPC / KNC / KTC / KTD / Sentinel) — bisa anonim →</a>
+                        </p>
 
                         {{-- Partner --}}
                         <div class="pt-6 mt-10 border-t border-hairline dark:border-white/10">
