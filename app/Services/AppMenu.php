@@ -98,6 +98,9 @@ class AppMenu
             $entry(['group' => 'Pengaduan & Aspirasi', 'groupOrder' => 5, 'order' => 1, 'route' => 'insiden.rekap', 'title' => 'Rekap Pengaduan', 'desc' => 'Pengaduan & aspirasi karyawan: etika, K3, kecurangan, layanan (web + API)', 'roles' => ['admin', 'manager'], 'badge' => 'ADU']),
             $entry(['group' => 'Pengaduan & Aspirasi', 'groupOrder' => 5, 'order' => 2, 'route' => 'insiden.api-docs', 'title' => 'Dokumentasi API', 'desc' => 'Panduan bridging: token, endpoint & contoh cURL untuk sistem lain', 'roles' => ['admin'], 'badge' => 'API']),
 
+            // ── Keselamatan Pasien (IKP) ──────────────────────────────
+            $entry(['group' => 'Keselamatan Pasien', 'groupOrder' => 6, 'order' => 1, 'route' => 'ikp.rekap', 'title' => 'Rekap Insiden (IKP)', 'desc' => 'Insiden keselamatan pasien: KPC, KNC, KTC, KTD, Sentinel — rekap, grading & tindak lanjut (web + API)', 'roles' => ['admin', 'manager'], 'badge' => 'IKP']),
+
             // ── Penawaran ─────────────────────────────────────────────
             $entry(['group' => 'Penawaran', 'groupOrder' => 6, 'order' => 1, 'route' => 'penawaran.perbaikan-siklik', 'title' => 'Proposal SIKLIK', 'desc' => 'Sistem Informasi Klinik — kesiapan piloting rujukan Tulungagung', 'roles' => $masterRoles, 'badge' => 'GPER']),
 

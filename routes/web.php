@@ -20,6 +20,9 @@ Route::livewire('/survei', 'pages::survei-publik.survei-publik')->name('survei.p
 // Pelaporan insiden karyawan (whistleblowing) — publik, bisa anonim.
 Route::livewire('/lapor-insiden', 'pages::insiden-publik.insiden-publik')->name('insiden.publik');
 
+// Pelaporan Insiden Keselamatan Pasien (IKP) — publik, bisa anonim (no blame).
+Route::livewire('/lapor-ikp', 'pages::ikp-publik.ikp-publik')->name('ikp.publik');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('/dashboard', 'dashboard')->name('dashboard');
 });
@@ -50,6 +53,9 @@ Route::middleware(['auth'])->group(function () {
     Route::livewire('/insiden/rekap', 'pages::insiden.rekap')->name('insiden.rekap');
     // Dokumentasi API bridging pengaduan (admin — menampilkan token).
     Route::livewire('/insiden/api-docs', 'pages::insiden.api-docs')->name('insiden.api-docs');
+
+    // Insiden Keselamatan Pasien (IKP) — rekap, grading & tindak lanjut (admin/manager).
+    Route::livewire('/ikp/rekap', 'pages::ikp.rekap')->name('ikp.rekap');
 
     // ===========================================
     // GPER — MASTER DATA (ticketing & strategis)
