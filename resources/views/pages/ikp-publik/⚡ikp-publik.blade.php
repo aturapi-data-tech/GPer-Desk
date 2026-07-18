@@ -91,7 +91,7 @@ new #[Layout('layouts.public-form')] class extends Component {
 
 @php
     $types = [
-        'kpc'      => 'KPC — Kondisi Potensial Cedera (belum terjadi insiden)',
+        'kpcs'     => 'KPCS — Kondisi Potensial Cedera Signifikan (belum terjadi insiden)',
         'knc'      => 'KNC — Kejadian Nyaris Cedera (nyaris kena pasien)',
         'ktc'      => 'KTC — Kejadian Tidak Cedera (kena pasien, tak cedera)',
         'ktd'      => 'KTD — Kejadian Tidak Diharapkan (pasien cedera)',
@@ -108,7 +108,7 @@ new #[Layout('layouts.public-form')] class extends Component {
             <div>
                 <h1 class="text-2xl font-bold leading-tight text-ink dark:text-gray-100">Pelaporan Insiden Keselamatan Pasien</h1>
                 <p class="mt-1 text-sm leading-relaxed text-muted dark:text-gray-400">
-                    Laporkan setiap <strong>insiden keselamatan pasien</strong> (KPC, KNC, KTC, KTD, atau Sentinel) untuk ditindaklanjuti tim mutu.
+                    Laporkan setiap <strong>insiden keselamatan pasien</strong> (KPCS, KNC, KTC, KTD, atau Sentinel) untuk ditindaklanjuti tim mutu.
                     Pelaporan bersifat <strong class="text-brand-green dark:text-brand-lime">no blame</strong> — tujuannya pembelajaran &amp; perbaikan sistem, bukan menyalahkan.
                 </p>
             </div>

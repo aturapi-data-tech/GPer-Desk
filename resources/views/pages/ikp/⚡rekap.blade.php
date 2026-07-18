@@ -93,9 +93,9 @@ new class extends Component {
 ?>
 
 @php
-    $typeLabels = ['kpc' => 'KPC', 'knc' => 'KNC', 'ktc' => 'KTC', 'ktd' => 'KTD', 'sentinel' => 'Sentinel'];
+    $typeLabels = ['kpcs' => 'KPCS', 'knc' => 'KNC', 'ktc' => 'KTC', 'ktd' => 'KTD', 'sentinel' => 'Sentinel'];
     $typeFull   = [
-        'kpc' => 'Kondisi Potensial Cedera', 'knc' => 'Kejadian Nyaris Cedera', 'ktc' => 'Kejadian Tidak Cedera',
+        'kpcs' => 'Kondisi Potensial Cedera Signifikan', 'knc' => 'Kejadian Nyaris Cedera', 'ktc' => 'Kejadian Tidak Cedera',
         'ktd' => 'Kejadian Tidak Diharapkan', 'sentinel' => 'Kejadian Sentinel',
     ];
     $statLabels  = ['baru' => 'Baru', 'investigasi' => 'Investigasi', 'selesai' => 'Selesai', 'ditutup' => 'Ditutup'];

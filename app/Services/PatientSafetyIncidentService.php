@@ -9,12 +9,14 @@ use Illuminate\Support\Facades\DB;
  * Logika Pelaporan Insiden Keselamatan Pasien (IKP) — dipakai bersama oleh web
  * (Livewire) dan REST API bridging (mis. dari EMR/SIMRS) supaya konsisten.
  *
- * Acuan: Permenkes 11/2017 tentang Keselamatan Pasien & standar PMKP.
+ * Acuan: Permenkes 11/2017 tentang Keselamatan Pasien & standar PMKP;
+ * jenis insiden mengikuti Instrumen Survei Akreditasi RS (Kepdirjen
+ * HK.02.02/D/47104/2024), PMKP 8: Sentinel, KTD, KTC, KNC, KPCS.
  */
 class PatientSafetyIncidentService
 {
-    /** Jenis insiden keselamatan pasien. */
-    public const TYPES = ['kpc', 'knc', 'ktc', 'ktd', 'sentinel'];
+    /** Jenis insiden keselamatan pasien (KPCS = Kondisi Potensial Cedera Signifikan). */
+    public const TYPES = ['kpcs', 'knc', 'ktc', 'ktd', 'sentinel'];
 
     /** Grading matriks risiko (band warna) — diisi tim mutu setelah investigasi. */
     public const GRADINGS = ['biru', 'hijau', 'kuning', 'merah'];
