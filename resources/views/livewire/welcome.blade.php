@@ -45,16 +45,25 @@ new class extends Component {
                                    bg-brand-green/10 text-brand-green ring-brand-green/20
                                    dark:bg-brand-lime/10 dark:text-brand-lime dark:ring-brand-lime/20">
                             <span class="w-2 h-2 rounded-full bg-brand-lime animate-pulse"></span>
-                            Sistem Internal GPER
+                            Sistem Internal Layanan &amp; Mutu
                         </p>
 
                         <h1 class="mt-5 font-bold tracking-tight text-5xl leading-tight sm:text-6xl text-ink dark:text-white">
                             Selamat Datang di
-                            <span class="text-brand-green dark:text-brand-lime whitespace-nowrap">GPER</span>
+                            <span class="text-brand-green dark:text-brand-lime whitespace-nowrap">SIGAP</span>
                         </h1>
 
+                        <p class="mt-2 text-sm font-medium tracking-wide uppercase text-muted dark:text-gray-400">
+                            <span class="text-brand-green dark:text-brand-lime">S</span>istem
+                            <span class="text-brand-green dark:text-brand-lime">I</span>nformasi
+                            <span class="text-brand-green dark:text-brand-lime">G</span>erak-cepat
+                            <span class="text-brand-green dark:text-brand-lime">A</span>duan &amp;
+                            <span class="text-brand-green dark:text-brand-lime">P</span>elayanan
+                        </p>
+
                         <p class="max-w-xl mt-5 text-lg leading-relaxed text-body dark:text-gray-300">
-                            Platform manajemen tiket gangguan. Punya keluhan atau gangguan?
+                            Satu pintu untuk tiket gangguan, keselamatan pasien, pengaduan, &amp; suara pasien.
+                            Punya keluhan, gangguan, atau masukan?
                             <strong class="text-ink dark:text-white">Lapor langsung — tanpa perlu login.</strong>
                             Petugas silakan masuk untuk menangani.
                         </p>
@@ -166,7 +175,7 @@ new class extends Component {
             {{-- FOOTER --}}
             <footer class="py-6 border-t border-hairline dark:border-white/10">
                 <p class="text-center text-caption text-muted dark:text-gray-400">
-                    © {{ date('Y') }} GPER
+                    © {{ date('Y') }} SIGAP · Powered by Aturapi Data Technology
                 </p>
             </footer>
         </section>
