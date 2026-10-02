@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\DokumenService;
+use App\Support\Naskah;
 use App\Support\TataNaskah;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Str;
@@ -92,9 +93,44 @@ class DokumenCetakController extends Controller
         ];
     }
 
+    /** Tanda air: belum ditandatangani = DRAF; dokumen usang tetap ditandai. */
+    public static function tandaAir(string $status, ?array $ttd): ?string
+    {
+        return ['TIDAK_BERLAKU' => 'TIDAK BERLAKU', 'DICABUT' => 'DICABUT'][$status] ?? ($ttd ? null : 'DRAF');
+    }
+
+    /** Naskah versi 2 (isi teks + lembar gaya config/tata_naskah.php) — App\Support\Naskah. */
+    public static function pdfVersi2(object $dok, array $n, ?array $ttd): string
+    {
+        $unsur = Naskah\Susun::unsur($dok, $n, $ttd);
+        $html = (new Naskah\CetakPdf(self::tandaAir($dok->status, $ttd), public_path('images/kop/kop_portrait.png')))
+            ->html($dok->dok_judul, $unsur);
+        $pdf = Pdf::loadHTML($html)->setPaper('A4', 'portrait')
+            ->setOption('chroot', array_values(array_filter([realpath(base_path()), realpath((string) config('dokumen.arsip_impor'))])));
+
+        return $pdf->output();
+    }
+
+    public static function docxVersi2(object $dok, array $n, ?array $ttd): string
+    {
+        $tanda = self::tandaAir($dok->status, $ttd);
+
+        return (new Naskah\CetakDocx($tanda === 'DRAF' ? 'DRAF — belum ditandatangani' : $tanda, public_path('images/kop/kop_portrait.png')))
+            ->simpan(Naskah\Susun::unsur($dok, $n, $ttd));
+    }
+
     private function naskahPdf(int $dokId): Response
     {
         $d = $this->dataNaskah($dokId);
+        if (Naskah\Kerangka::versi2($d['n'])) {
+            $isi = self::pdfVersi2($d['dok'], $d['n'], $d['ttd']);
+            DokumenService::catat($dokId, 'CETAK', 'PDF');
+
+            return response($isi, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
+            ]);
+        }
         $pdf = Pdf::loadView('pages.dokumen.cetak.naskah-pdf', $d)->setPaper('A4', 'portrait')
             ->setOption('chroot', $this->chroot());
         $dompdf = $pdf->getDomPDF();
@@ -127,6 +163,12 @@ class DokumenCetakController extends Controller
     private function naskahDocx(int $dokId): Response
     {
         $d = $this->dataNaskah($dokId);
+        if (Naskah\Kerangka::versi2($d['n'])) {
+            $tmp = self::docxVersi2($d['dok'], $d['n'], $d['ttd']);
+            DokumenService::catat($dokId, 'CETAK', 'DOCX');
+
+            return response()->download($tmp, $this->namaBerkasNaskah($d['dok'], 'docx'))->deleteFileAfterSend(true);
+        }
         ['dok' => $dok, 'n' => $n, 'lampiran' => $lampiran, 'tanggal' => $tanggal] = $d;
         $word = new PhpWord();
         $word->setDefaultFontName('Arial');

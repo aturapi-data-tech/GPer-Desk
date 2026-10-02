@@ -118,3 +118,20 @@ Format hal. 25–26 & aturan rumah: A4, Arial (Liberation Sans di `resources/fon
 Lihat registri: semua user login. Tambah/ubah/hapus, nomor, status, revisi, pengaturan: `admin`, `manager`
 (`DokumenService::bolehUbah`). Klasifikasi TERBATAS/RAHASIA/SANGAT_RAHASIA (BAB VI) hanya bisa dicetak/dibuka
 oleh `admin`, `manager`, `direktur`.
+
+## Naskah versi 2 — isi teks + lembar gaya (2 Okt 2026)
+
+Isi naskah dipisah dari tampilannya. `DOK_JSON.isi.naskah` dengan `"versi": 2` hanya memuat **teks** per bagian;
+kapital, tebal, rata, ukuran huruf, jarak, nomor butir (a., 1), …) dan tanda baca akhir butir diterapkan saat cetak.
+
+| Berkas | Isi |
+|---|---|
+| `config/tata_naskah.php` | lembar gaya per peran (judul_jenis, nomor, konsiderans, diktum, kaki_jabatan, …) + rujukan halaman Pedoman. Satu sumber untuk PDF dan DOCX |
+| `app/Support/Naskah/Kerangka.php` | bagian wajib per jenis + isi kosong. Sudah: PERDIR, SK, KEB (arahan), UND (undangan) |
+| `app/Support/Naskah/Susun.php` | JSON → deret unsur tata letak (teks, lajur, isi, identitas, rincian, kaki, tembusan, lampiran) |
+| `app/Support/Naskah/CetakPdf.php` · `CetakDocx.php` | unsur → DomPDF / PhpWord |
+| `php artisan naskah:contoh berkas.json` | pratinjau PDF+DOCX dari JSON tanpa database (`storage/app/naskah-contoh`) |
+
+Pilihan rumah (disetujui user 2 Okt 2026): teks 12 pt, tabel 10 pt, spasi 1,15 (Pedoman hanya memberi rentang 10–12 pt
+dan 1–1,5). Naskah versi 1 tetap dicetak dengan jalur lama sampai dikonversi
+(`perkakas/naskah_v2.py` → `.registri/isi_naskah_v2.json`, 82 naskah arahan).
