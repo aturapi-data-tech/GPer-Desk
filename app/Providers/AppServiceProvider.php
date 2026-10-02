@@ -29,14 +29,12 @@ class AppServiceProvider extends ServiceProvider
             URL::forceScheme('https');
         }
 
-        // Blade directive untuk render path TTD user.
-        // - Standar baru: DB simpan filename saja (mis: 08052026081302.png)
-        //   → prepend 'storage/UserTtd/'
-        // - Legacy: DB simpan full path (mis: 'UserTtd/abc.png')
-        //   → pakai apa adanya dengan prefix 'storage/'
+        // Blade directive untuk render path TTD user (dua format kolom
+        // myuser_ttd_image: filename saja vs legacy 'UserTtd/abc.png') —
+        // logikanya terpusat di App\Support\TtdUser (diselaraskan dari sirus).
         // Pemakaian: <img src="@ttdSrc($user->myuser_ttd_image)" />
         Blade::directive('ttdSrc', function ($expression) {
-            return "<?php echo (function (\$v) { return empty(\$v) ? '' : 'storage/' . (str_contains(\$v, '/') ? \$v : 'UserTtd/' . \$v); })($expression); ?>";
+            return "<?php echo \\App\\Support\\TtdUser::pathWeb($expression); ?>";
         });
 
         // Share $sidebarMenus (grouped + filtered by user role) ke sidebar layout.

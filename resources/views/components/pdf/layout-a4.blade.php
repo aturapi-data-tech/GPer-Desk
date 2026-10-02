@@ -4,6 +4,8 @@
     'showGaris' => false,
     'showWatermark' => false,
     'patientData' => null,
+    // Kode formulir RM (mis. "RM-02.01 · Rev.0") — lihat /panduan-dev/koding-formulir-rm.
+    'kode' => null,
 ])
 
 <!DOCTYPE html>
@@ -81,11 +83,40 @@
             padding: 30px 40px 30px 40px;
         }
 
+        /* ── KAKI FORMULIR RM (tiap halaman, di margin bawah): kode kiri · tanggal cetak kanan ── */
+        .kaki-formulir {
+            position: fixed;
+            bottom: -14px;
+            font-size: 8px;
+            color: #6b7280;
+        }
+
+        .kaki-formulir.kiri {
+            left: 40px;
+        }
+
+        .kaki-formulir.kanan {
+            right: 40px;
+            text-align: right;
+        }
+
         {!! $pdfCss ? file_get_contents(public_path('build/' . $pdfCss)) : '' !!}
     </style>
 </head>
 
 <body>
+    {{-- KAKI FORMULIR RM — SETIAP halaman (fixed, di margin bawah sehingga tak menimpa isi):
+         kiri kode apa adanya (mis. "RM-02.01 · Rev.0"), kanan "Dicetak: dd/mm/yyyy hh:mi:ss oleh <user>". Satu-satunya footer
+         cetakan formulir RM — nama/alamat RS sudah di kop, No. RM di identitas pasien. --}}
+    @if (filled($kode))
+        <div class="kaki-formulir kiri">{{ $kode }}</div>
+        <div class="kaki-formulir kanan">
+            Dicetak: {{ \Carbon\Carbon::now(config('app.timezone'))->format('d/m/Y H:i:s') }}
+            @if (filled(auth()->user()?->myuser_name))
+                oleh {{ auth()->user()->myuser_name }}
+            @endif
+        </div>
+    @endif
 
     {{-- BACKGROUND LAYER --}}
     <div class="pdf-background">

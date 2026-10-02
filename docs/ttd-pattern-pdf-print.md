@@ -223,18 +223,31 @@ Behavior:
 - Output: relative path `storage/UserTtd/...` atau `storage/...` yang di-resolve DomPDF ke `public/storage/...`.
 - Output empty string kalau input kosong (img dengan src kosong → tidak render).
 
-Jangan inline build path manual via `public_path('storage/' . $ttd)` — pakai `@ttdSrc()` supaya konsisten.
+Jangan inline build path manual via `public_path('storage/' . $ttd)` — pakai `@ttdSrc()` (tampilan)
+atau `App\Support\TtdUser` (path absolut untuk DomPDF) supaya konsisten.
 
-### Lookup TTD dari User
+### Lookup TTD dari User — WAJIB lewat `App\Support\TtdUser`
 
-Pola umum sebelum render:
+Kolom `users.myuser_ttd_image` menyimpan DUA format: nama file saja (standar baru Kelola User,
+berkas di `storage/app/public/UserTtd/`) dan legacy path relatif `UserTtd/abc.jpg`. Menyusun
+path sendiri (`public_path('storage/' . $nilai)`) benar untuk legacy tetapi GAGAL untuk format
+baru → `file_exists` false → TTD dokter/petugas kosong di PDF (kasus 2026-09-08: ±80 titik cetak
+modul dokumen RJ/UGD/RI terdampak, sementara cetak rekam medis RJ yang pakai `@ttdSrc` aman).
 
 ```php
-$ttdDokter = \App\Models\User::where('myuser_code', $drId ?? '')
-    ->value('myuser_ttd_image');
+use App\Support\TtdUser;
+
+// Paling ringkas: dari kode user langsung jadi path absolut (null bila tak ada/berkas hilang)
+$ttdPath = TtdUser::pathBerkasDariKode($entry['ttdCode'] ?? null);
+
+// Bila nilai kolom sudah di tangan
+$pathBerkas = TtdUser::pathBerkas($user->myuser_ttd_image); // public_path(...) — untuk DomPDF & file_exists()
+$url        = TtdUser::url($user->myuser_ttd_image);        // asset(...) — untuk <img> di browser
+$pathWeb    = TtdUser::pathWeb($user->myuser_ttd_image);    // 'storage/UserTtd/x.png' — dipakai @ttdSrc
 ```
 
-`myuser_ttd_image` adalah kolom string di tabel `users` berisi nama file. Lookup pakai `myuser_code` (kode user dari Oracle Dev 6i) yang biasanya sama dengan `dr_id` di transaksi.
+Viewer rekam medis (`DokumenViewSupportTrait::dataDokumenRi/Txn`) sudah memanggil `TtdUser::pathBerkasDariKode`.
+Lookup pakai `myuser_code` (kode user dari Oracle Dev 6i) yang biasanya sama dengan `dr_id` di transaksi.
 
 ---
 
@@ -263,22 +276,22 @@ Untuk TTD area, **selalu pakai `h-16` (native)** — bukan `h-[64px]`. `h-16` = 
 
 24 file `-print.blade.php` (TTD digital `h-16`):
 
-- 2 EMR Assessment Awal (`rekam-medis/r-j/cetak-rekam-medis/cetak-rekam-medis-print`, `rekam-medis/u-g-d/cetak-rekam-medis/cetak-rekam-medis-print`)
+- 2 EMR Assessment Awal (`rekam-medis/rj/cetak-rekam-medis/cetak-rekam-medis-print`, `rekam-medis/ugd/cetak-rekam-medis/cetak-rekam-medis-print`)
 - 2 Penunjang (`rekam-medis/penunjang/laboratorium-display/laboratorium-display-print`, `rekam-medis/penunjang/radiologi-display/radiologi-display-print`)
 - 3 Eresep (`rekam-medis/{r-j,u-g-d,r-i}/cetak-eresep/cetak-eresep-print`)
 - 4 Suket Sakit/Sehat (`modul-dokumen/{r-j,u-g-d}/suket-{sakit,sehat}/cetak-suket-*-print`)
 - 3 General Consent (`modul-dokumen/{r-j,u-g-d,r-i}/general-consent/cetak-general-consent-*-print`)
 - 3 Inform Consent (`modul-dokumen/{r-j,u-g-d,r-i}/inform-consent/cetak-inform-consent-*-print`)
-- 1 Form Penjaminan (`modul-dokumen/u-g-d/form-penjaminan/cetak-form-penjaminan-print`)
-- 1 Form Transfer UGD-RI (`modul-dokumen/u-g-d/form-trf-ugd-ri/cetak-form-trf-ugd-ri-print`)
-- 2 Rekam Medis RJ baru (`rekam-medis/r-j/cetak-rekam-medis/cetak-rekam-medis-rj-{v1,fisio}-print`)
-- 1 Riwayat Pengobatan RI (`modul-dokumen/r-i/riwayat-pengobatan/cetak-riwayat-pengobatan-ri-print`)
+- 1 Form Penjaminan (`modul-dokumen/ugd/form-penjaminan/cetak-form-penjaminan-print`)
+- 1 Form Transfer UGD-RI (`modul-dokumen/ugd/form-trf-ugd-ri/cetak-form-trf-ugd-ri-print`)
+- 2 Rekam Medis RJ baru (`rekam-medis/rj/cetak-rekam-medis/cetak-rekam-medis-rj-{v1,fisio}-print`)
+- 1 Riwayat Pengobatan RI (`modul-dokumen/ri/riwayat-pengobatan/cetak-riwayat-pengobatan-ri-print`)
 - 2 Form A & B MPP (`livewire/cetak/cetak-form-{a,b}-print`)
 
 3 file BPJS pakai pola compact (`height: 30/40px` + `&nbsp;`):
-- `modul-dokumen/b-p-j-s/cetak-sep/cetak-sep-print`
-- `modul-dokumen/b-p-j-s/cetak-skdp/cetak-skdp-print`
-- `modul-dokumen/b-p-j-s/cetak-prb/cetak-prb-print`
+- `modul-dokumen/bpjs/cetak-sep/cetak-sep-print`
+- `modul-dokumen/bpjs/cetak-skdp/cetak-skdp-print`
+- `modul-dokumen/bpjs/cetak-prb/cetak-prb-print`
 
 ---
 
@@ -291,7 +304,7 @@ Untuk TTD area, **selalu pakai `h-16` (native)** — bukan `h-[64px]`. `h-16` = 
 - [ ] Wrapper img/fallback di-bungkus `<div class="text-center">` block sendiri (bukan langsung di parent flex/grid).
 - [ ] Label nama di bawah pakai struktur `<span class="inline-block min-w-[150px] border-t border-black pt-0.5">{{ $nama }}</span>`.
 - [ ] Kalau punya 2+ kolom TTD, **setiap cell punya 3 line struktur sama** (tanggal/placeholder + TTD area + underline+label) supaya bottom sejajar.
-- [ ] Lookup TTD pakai `\App\Models\User::where('myuser_code', $code)->value('myuser_ttd_image')` + render via `@ttdSrc()`.
+- [ ] Lookup TTD lewat `App\Support\TtdUser::pathBerkasDariKode($code)` (DomPDF) atau `@ttdSrc()` (tampilan) — JANGAN `public_path('storage/' . $nilai)` sendiri.
 - [ ] Setelah edit, kalau ada bracket class baru → `npm run build`.
 
 ---
@@ -300,7 +313,21 @@ Untuk TTD area, **selalu pakai `h-16` (native)** — bukan `h-[64px]`. `h-16` = 
 
 - Direktif: `app/Providers/AppServiceProvider.php` → `Blade::directive('ttdSrc', ...)`
 - Layout: `resources/views/components/pdf/layout-a4-with-out-background.blade.php`
-- Contoh canonical (3-stack): `resources/views/pages/components/rekam-medis/r-j/cetak-rekam-medis/cetak-rekam-medis-rj-v1-print.blade.php`
-- Contoh single TTD: `resources/views/pages/components/modul-dokumen/u-g-d/suket-sakit/cetak-suket-sakit-ugd-print.blade.php`
-- Contoh 3-kolom TTD: `resources/views/pages/components/modul-dokumen/u-g-d/inform-consent/cetak-inform-consent-print.blade.php`
-- Contoh compact BPJS: `resources/views/pages/components/modul-dokumen/b-p-j-s/cetak-sep/cetak-sep-print.blade.php`
+- Contoh canonical (3-stack): `resources/views/pages/components/rekam-medis/rj/cetak-rekam-medis/cetak-rekam-medis-rj-v1-print.blade.php`
+- Contoh single TTD: `resources/views/pages/components/modul-dokumen/ugd/suket-sakit/cetak-suket-sakit-ugd-print.blade.php`
+- Contoh 3-kolom TTD: `resources/views/pages/components/modul-dokumen/ugd/inform-consent/cetak-inform-consent-print.blade.php`
+- Contoh compact BPJS: `resources/views/pages/components/modul-dokumen/bpjs/cetak-sep/cetak-sep-print.blade.php`
+
+## 11. Urutan kolom TTD standar (dokumen multi-tanda-tangan)
+
+Untuk dokumen consent dengan >1 penandatangan, **urutan kolom TTD di CETAK wajib SAMA dengan urutan blok di FORM (layar)**, dan **seragam antar modul RJ/UGD/RI**.
+
+- **Inform Consent (3 kolom):** `Pasien / Wali → Saksi → Pemberi Informasi (PPA/Dokter)`.
+  Form (semua modul) sudah pakai urutan ini; cetak RJ/UGD/RI diseragamkan ke sini
+  (sebelumnya cetak keliru `Pasien → PPA → Saksi`).
+- **General Consent (2 kolom):** `Pasien / Wali → Petugas Pemberi Penjelasan`.
+
+Saat menambah/mengubah kolom TTD: **cek urutan blok di FORM dulu, lalu samakan di CETAK.**
+JANGAN percaya komentar `{{-- TTD 3 kolom: ... --}}` — verifikasi label `<p class="font-bold">`
+tiap kolom (komentar bisa tak sinkron dgn isi; kasus nyata: komentar RJ tertulis
+`Saksi | Pemberi Informasi` padahal kolomnya `Pemberi Informasi | Saksi`).

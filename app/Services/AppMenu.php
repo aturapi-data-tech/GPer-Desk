@@ -101,6 +101,10 @@ class AppMenu
             // ── Keselamatan Pasien (IKP) ──────────────────────────────
             $entry(['group' => 'Keselamatan Pasien', 'groupOrder' => 6, 'order' => 1, 'route' => 'ikp.rekap', 'title' => 'Rekap Insiden (IKP)', 'desc' => 'Insiden keselamatan pasien: KPCS, KNC, KTC, KTD, Sentinel — rekap, grading & tindak lanjut (web + API)', 'roles' => ['admin', 'manager'], 'badge' => 'IKP']),
 
+            // ── Dokumen Regulasi & Akreditasi ─────────────────────────
+            $entry(['group' => 'Dokumen Akreditasi', 'groupOrder' => 7, 'order' => 1, 'route' => 'dokumen.registri', 'title' => 'Registri Dokumen', 'desc' => 'Peraturan → Pedoman → SPO → Formulir → Bukti: penomoran Pedoman Tata Naskah, revisi, kaitan EP & penyusun SPO (PDF/DOCX)', 'roles' => ['*'], 'badge' => 'DOK']),
+            $entry(['group' => 'Dokumen Akreditasi', 'groupOrder' => 7, 'order' => 2, 'route' => 'dokumen.pengaturan', 'title' => 'Pengaturan Penomoran', 'desc' => 'Jenis naskah, pola nomor, buku catatan nomor (penghitung) & singkatan bagian', 'roles' => ['admin', 'manager'], 'badge' => 'NO']),
+
             // ── Penawaran ─────────────────────────────────────────────
             $entry(['group' => 'Penawaran', 'groupOrder' => 6, 'order' => 1, 'route' => 'penawaran.perbaikan-siklik', 'title' => 'Proposal SIKLIK', 'desc' => 'Sistem Informasi Klinik — kesiapan piloting rujukan Tulungagung', 'roles' => $masterRoles, 'badge' => 'GPER']),
 

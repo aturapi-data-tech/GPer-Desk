@@ -319,7 +319,46 @@ Bukan tombol aksi, melainkan input radio yang ditampilkan sebagai tombol.
 > **Jangan** pakai raw `<button class="text-red-600 ...">` atau `<x-icon-button>`
 > untuk tombol sampah di tabel — selalu `x-outline-button` merah-tint di atas
 > agar ukuran, hover, focus-ring, dan dark-mode seragam. Referensi:
-> `transaksi/ri/eresep-ri/eresep-ri-non-racikan.blade.php` & `…-racikan.blade.php`.
+> `transaksi/ri/eresep-ri/⚡eresep-ri-non-racikan.blade.php` & `…-racikan.blade.php`.
+
+### Modul Dokumen: gate role Hapus & Buka Kunci (TERPUSAT)
+
+Aksi sensitif di **modul dokumen** (formulir bertanda tangan: consent, laporan,
+pengkajian, dll) — **Hapus** entri & **Buka Kunci** (cabut TTD) — WAJIB digate lewat
+**Gate terpusat**, bukan `@hasanyrole` literal. Daftar role ada di **satu file**
+`App\Support\AksiRole` (konstanta `DOKUMEN_HAPUS` & `DOKUMEN_BUKA_KUNCI`), didaftarkan
+sebagai Gate `dokumen.hapus` & `dokumen.bukaKunci` di `AppServiceProvider::boot()`.
+
+```blade
+{{-- Buka Kunci --}}
+@can('dokumen.bukaKunci')
+    <x-confirm-button action="bukaKunci('{{ $rowKey }}')" title="Buka Kunci ..."
+        message="TTD petugas dicabut & entri kembali draft. Lanjutkan?"
+        confirmText="Ya, Buka Kunci">Buka Kunci</x-confirm-button>
+@endcan
+
+{{-- Hapus --}}
+@can('dokumen.hapus')
+    <x-outline-button type="button" wire:click.prevent="hapus('{{ $rowKey }}')"
+        wire:confirm="Yakin hapus ... ini?" wire:loading.attr="disabled"
+        class="!text-red-600 !bg-red-50 !border-red-200 ...">{{-- ikon tong sampah --}}</x-outline-button>
+@endcan
+```
+
+```php
+// Guard server (DUA lapis) — statement PERTAMA di method hapus/removeEntry/dll:
+if (!auth()->user()?->can('dokumen.hapus')) {
+    $this->dispatch('toast', type: 'error', message: 'Anda tidak berwenang menghapus entri.');
+    return;
+}
+// bolehBukaKunci(): return (bool) auth()->user()?->can('dokumen.bukaKunci');
+```
+
+> Menambah/mengurangi role yang boleh Hapus/Buka Kunci = ubah **1 baris** di
+> `App\Support\AksiRole` — otomatis berlaku di SEMUA modul (RI/UGD/RJ).
+> **DILARANG** menulis `@hasanyrole('Admin|Manager Umum|Manager Medis')` atau
+> `hasAnyRole([...])` literal di file modul dokumen. Domain lain (administrasi, EMR
+> unlock, log-aktivitas, saldo-kas) punya kebijakan sendiri — jangan pakai gate `dokumen.*`.
 
 ---
 
@@ -363,9 +402,9 @@ pakai `x-outline-button` merah-tint:
 </x-outline-button>
 ```
 
-**Referensi implementasi:** footer `transaksi/ri/emr-ri/erm-ri.blade.php`
+**Referensi implementasi:** footer `transaksi/ri/emr-ri/⚡emr-ri.blade.php`
 (i-Care=emerald, Pindah Kamar=amber, Dokumen=indigo, Administrasi=teal,
-E-Resep=brand, Resume=rose) & panel aksi `transaksi/ri/eresep-ri/eresep-ri.blade.php`
+E-Resep=brand, Resume=rose) & panel aksi `transaksi/ri/eresep-ri/⚡eresep-ri.blade.php`
 (TTD & Kirim=emerald, Edit=amber, Salin=indigo, Plan CPPT=teal, Cetak e-Resep=brand,
 Hapus Draft=merah-tint).
 
@@ -429,3 +468,10 @@ Perilaku:
 
 Jangan bikin tombol refresh/reset manual lagi — ikon reload HANYA untuk refresh,
 panah balik HANYA untuk reset (jangan tertukar).
+
+## Tombol aksi per entri (2026-09-08)
+
+Cetak dan hapus per entri di tabel **wajib** komponen: `<x-cetak-button>` dan `<x-hapus-button>`
+(ikon 40px, sekelas tombol berteks). Rincian, mode dialog modal, dan pengecualian: lihat
+`docs/standar-ui-komponen.md` bagian "Tombol aksi per entri di tabel".
+

@@ -58,6 +58,18 @@ Route::middleware(['auth'])->group(function () {
     Route::livewire('/ikp/rekap', 'pages::ikp.rekap')->name('ikp.rekap');
 
     // ===========================================
+    // DOKUMEN REGULASI & AKREDITASI — registri bertingkat, penomoran, penyusun SPO
+    // ===========================================
+    Route::livewire('/dokumen/registri', 'pages::dokumen.registri.registri')->name('dokumen.registri');
+    Route::livewire('/dokumen/pengaturan', 'pages::dokumen.pengaturan.pengaturan')->name('dokumen.pengaturan');
+    Route::get('/dokumen/{dokId}/cetak.pdf', [\App\Http\Controllers\DokumenCetakController::class, 'pdf'])
+        ->whereNumber('dokId')->name('dokumen.cetak.pdf');
+    Route::get('/dokumen/{dokId}/unduh.docx', [\App\Http\Controllers\DokumenCetakController::class, 'docx'])
+        ->whereNumber('dokId')->name('dokumen.cetak.docx');
+    Route::get('/dokumen/{dokId}/berkas/{berkasId}', [\App\Http\Controllers\DokumenCetakController::class, 'berkas'])
+        ->whereNumber('dokId')->name('dokumen.berkas');
+
+    // ===========================================
     // GPER — MASTER DATA (ticketing & strategis)
     // ===========================================
     Route::livewire('/master/ticket-categories', 'pages::master.master-ticket-categories.master-ticket-categories')

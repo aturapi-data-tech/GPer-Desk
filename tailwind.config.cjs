@@ -50,7 +50,7 @@ module.exports = {
                 },
                 muted: {
                     DEFAULT: "#69736b", // sub-judul
-                    soft: "#8b948c", // caption / fine-print
+                    soft: "#6b746c", // caption / fine-print — 4.53:1 vs kanvas (WCAG AA), diselaraskan dari sirus
                 },
                 hairline: {
                     DEFAULT: "#dde4d8", // garis 1px di permukaan terang

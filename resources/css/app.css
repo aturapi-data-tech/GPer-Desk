@@ -72,7 +72,8 @@
     --body: #b9c4bc;
     --body-strong: #dbe4dd;
     --muted: #9aa89e;
-    --muted-soft: #76847b;
+    /* 4.52:1 vs kartu gelap (#1a271f). Dulu #76847b = 3.96:1, di bawah AA. */
+    --muted-soft: #808e85;
     --primary-disabled: #274b38;
     --on-primary: #ffffff;
     /* semantic: tint lebih gelap, deep lebih terang agar kontras di forest */
@@ -110,6 +111,11 @@
 .ds-caption    { @apply font-sans font-medium text-caption; }            /* 13 custom */
 .ds-caption-up { @apply font-sans font-semibold text-caption-up uppercase text-muted; } /* 11.5 custom */
 .ds-code       { @apply font-normal text-caption; font-family: var(--mono); }
+/* Judul bagian pada kartu form (x-border-form). Sengaja BUKAN ds-caption-up:
+   caption dipakai untuk teks sekunder (muted, 11.5px) sehingga kepala tiap bagian
+   form ikut pudar & sulit dipindai. Di sini pakai warna ink + ukuran sedikit lebih
+   besar; color pakai var(--ink) supaya ikut ber-swap di mode gelap tanpa dark:. */
+.ds-form-title { @apply font-sans font-semibold text-sm uppercase; color: var(--ink); letter-spacing: 0.06em; }
 .ds-eyebrow    { @apply font-sans font-semibold text-xs uppercase text-brand-green; letter-spacing: 1.2px; }
 
 /* Spike-mark (asterisk radial Anthropic) sederhana */
@@ -171,6 +177,15 @@
 .ds-table .ds-c { text-align:center; }
 .ds-table-foot { @apply font-sans text-caption; padding:13px 24px; color:var(--muted);
     border-top:1px solid var(--hairline-soft); }
+
+/* Tabel ENTRI: baris input menyatu dengan tabel (Observasi Persalinan/Nifas, Laporan Persalinan,
+   Riwayat Obstetri VK). Padding sel 24px pada .ds-table memakan kolom sempit (w-16/w-20) sampai
+   input tinggal belasan piksel — di sini sel dipadatkan dan spinner input angka disembunyikan. */
+.ds-table-entri thead th { padding:10px 10px; }
+.ds-table-entri tbody td { padding:8px 10px; }
+.ds-table-entri input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+.ds-table-entri input[type=number]::-webkit-inner-spin-button,
+.ds-table-entri input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 
 /* Tombol pagination ber-tema (style guide) */
 .ds-page-btn { @apply font-sans font-medium text-sm; display:inline-flex; align-items:center;
@@ -241,6 +256,7 @@
 .t-code     { font-family:var(--mono); font-size:13px; }
 .t-num      { font-variant-numeric:tabular-nums; }
 
+/* ── Khusus GPer (tidak ada di sirus) ── */
 /* Ticker ulasan (Suara Pasien) — jalan vertikal bawah→atas, seamless (list digandakan) */
 @keyframes marquee-up { 0% { transform: translateY(0); } 100% { transform: translateY(-50%); } }
 .animate-marquee-up { animation: marquee-up 40s linear infinite; }

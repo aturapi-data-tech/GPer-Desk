@@ -2,8 +2,10 @@
     'name',                                                    // modal name untuk open-modal listener
     'savedEvent' => 'refresh-after-saved',                     // event yang reset dirty per section (sub-component dispatch ini setelah save sukses)
     'wireKey',                                                 // wire:key untuk container
-    'tabs' => [],                                              // array tab config: [['key' => '...', 'label' => '...', 'saveEvent' => '...'], ...]
+    'tabs' => [],                                              // array tab config: [['key' => '...', 'label' => '...', 'saveEvent' => '...', 'reloadEvent' => '...'], ...]
+    'reloadArg' => null,                                       // argumen (mis. riHdrNo) yg dikirim ke reloadEvent saat "buang perubahan"
     'initialTab' => null,                                      // tab default; null = ambil dari tabs[0]
+    'guardSwitch' => true,                                     // false = pindah tab langsung tanpa dialog konfirmasi (titik dirty tetap jalan)
     'wrapperClass' => 'flex flex-col min-h-[calc(100vh-8rem)]',
 ])
 
@@ -37,7 +39,12 @@
         pendingTab: null,
         savingAndClosing: false,
         savingAndSwitching: false,
+        {{-- JANGAN pakai tanda kutip ganda di komentar ini: isi x-data ada di dalam atribut HTML,
+             satu kutip ganda akan menutup atribut & sisa JS bocor jadi teks di halaman. --}}
+        saveFailed: false,          // true = percobaan Simpan menyisakan tab yang belum tersimpan
         saveMap: @js(collect($tabs)->mapWithKeys(fn($t) => [$t['key'] => ['label' => $t['label'], 'saveEvent' => $t['saveEvent']]])->all()),
+        reloadMap: @js(collect($tabs)->mapWithKeys(fn($t) => [$t['key'] => $t['reloadEvent'] ?? null])->all()),
+        reloadArg: @js($reloadArg),
 
         markDirty(tab) {
             if (this.saveMap[tab]) this.tabDirty[tab] = true;
@@ -60,10 +67,13 @@
             if (ev) Livewire.dispatch(ev);
         },
 
-        /* ── Switch tab dengan guard dirty pada activeTab ── */
+        /* ── Switch tab dengan guard dirty pada activeTab ──
+           guardSwitch=false: pindah langsung. Perubahan tetap tersimpan di state Livewire
+           tab asal (tidak di-reload dari DB), jadi titik dirty & isinya tetap ada saat balik. */
+        guardSwitch: @js((bool) $guardSwitch),
         requestSwitchTab(targetTab) {
             if (targetTab === this.activeTab) return;
-            if (this.tabDirty[this.activeTab]) {
+            if (this.guardSwitch && this.tabDirty[this.activeTab]) {
                 this.pendingTab = targetTab;
                 this.showSwitchWarning = true;
                 return;
@@ -103,41 +113,66 @@
                 this.savingAndSwitching = false;
             }
         },
+        discardAndSwitch() {
+            // Buang perubahan tab aktif TANPA menyimpan lalu pindah.
+            // Revert data form via reloadEvent (reload dari DB), bukan sekadar reset flag,
+            // supaya edit tak nyangkut & muncul lagi saat balik ke tab ini.
+            const fromTab = this.activeTab;
+            const reloadEv = this.reloadMap[fromTab];
+            if (reloadEv && this.reloadArg) {
+                Livewire.dispatch(reloadEv, { riHdrNo: this.reloadArg });
+            }
+            this.tabDirty[fromTab] = false;
+            const target = this.pendingTab;
+            this.pendingTab = null;
+            this.showSwitchWarning = false;
+            this.activeTab = target;
+        },
 
         tryClose() {
             if (this.isAnyDirty()) {
+                this.saveFailed = false;
                 this.showUnsavedWarning = true;
             } else {
                 $wire.closeModal();
             }
         },
 
+        /* Simpan semua tab dirty lalu tutup — HANYA kalau semuanya benar-benar tersimpan.
+           Tab yang gagal validasi tidak mengirim section-clean, jadi tetap dirty:
+           modal dibiarkan terbuka & daftar tab tersisa ditampilkan, bukan ditutup diam-diam. */
         async saveAndClose() {
             if (this.savingAndClosing) return;
             this.savingAndClosing = true;
+            this.saveFailed = false;
             try {
                 const dirtyKeys = this.dirtyTabKeys();
                 const events = dirtyKeys.map(k => this.saveMap[k]?.saveEvent).filter(Boolean);
                 if (events.length > 0) {
-                    let saved = 0;
-                    const onSaved = () => saved++;
-                    window.addEventListener('{{ $savedEvent }}', onSaved);
-                    try {
-                        events.forEach(e => Livewire.dispatch(e));
-                        const deadline = Date.now() + 3000;
-                        while (saved < events.length && Date.now() < deadline) {
-                            await new Promise(r => setTimeout(r, 50));
-                        }
-                    } finally {
-                        window.removeEventListener('{{ $savedEvent }}', onSaved);
+                    events.forEach(e => Livewire.dispatch(e));
+                    // Tunggu sampai tiap tab melapor bersih (section-clean → markClean),
+                    // bukan sekadar menghitung event saved global.
+                    const deadline = Date.now() + 5000;
+                    while (this.dirtyTabKeys().length > 0 && Date.now() < deadline) {
+                        await new Promise(r => setTimeout(r, 50));
                     }
                 }
-                Object.keys(this.tabDirty).forEach(k => this.tabDirty[k] = false);
+                if (this.isAnyDirty()) {
+                    this.saveFailed = true;   // biarkan dialog terbuka, tampilkan sisa tab
+                    return;
+                }
                 this.showUnsavedWarning = false;
                 await $wire.closeModal();
             } finally {
                 this.savingAndClosing = false;
             }
+        },
+        discardAndClose() {
+            // Buang perubahan SEMUA tab & tutup TANPA menyimpan.
+            // State form di server di-reset oleh handler open konsumen saat modal dibuka lagi.
+            Object.keys(this.tabDirty).forEach(k => this.tabDirty[k] = false);
+            this.showUnsavedWarning = false;
+            $wire.closeModal();
         },
     }"
     x-init="
@@ -173,23 +208,62 @@
                         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Ada tab belum disimpan</h3>
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                             Tab berikut punya perubahan belum disimpan:
-                            <span class="font-medium text-gray-700 dark:text-gray-300" x-text="dirtyTabLabels().join(', ')"></span>.
-                            Simpan semua dan tutup sekarang?
+                        </p>
+                        {{-- List ke bawah — lebih kebaca saat tab yang dirty banyak --}}
+                        <ul class="mt-2 space-y-1 text-sm">
+                            <template x-for="label in dirtyTabLabels()" :key="label">
+                                <li class="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-300">
+                                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                                    <span x-text="label"></span>
+                                </li>
+                            </template>
+                        </ul>
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400" x-show="!saveFailed">
+                            Simpan semua, atau keluar tanpa menyimpan?
+                        </p>
+                        {{-- Muncul kalau tombol Simpan sudah ditekan tapi masih ada tab yang gagal tersimpan
+                             (mis. validasi belum lengkap). Modal sengaja tidak ditutup. --}}
+                        <p x-show="saveFailed" x-cloak
+                            class="p-2 mt-2 text-sm border rounded-lg text-error bg-error/5 border-error/20">
+                            Tab di atas <strong>gagal disimpan</strong>. Buka tab tersebut dan cek pesan validasi
+                            (field wajib berwarna merah), lalu Simpan lagi — atau pilih Keluar untuk membuang perubahan.
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center justify-end gap-2 px-5 py-4 bg-gray-50/70 dark:bg-gray-900/20">
-                    <x-secondary-button type="button" x-on:click="showUnsavedWarning = false"
-                        x-bind:disabled="savingAndClosing">
-                        Lanjut Edit
-                    </x-secondary-button>
-                    <x-primary-button type="button" x-on:click="saveAndClose()"
-                        x-bind:disabled="savingAndClosing">
-                        <span x-show="!savingAndClosing">Tutup dan Simpan</span>
-                        <span x-show="savingAndClosing" x-cloak class="flex items-center gap-1">
-                            <x-loading /> Menyimpan...
-                        </span>
-                    </x-primary-button>
+                <div class="flex items-center justify-between gap-2 px-5 py-4 bg-gray-50/70 dark:bg-gray-900/20">
+                    {{-- Aksi destruktif (buang semua perubahan) dipisah di kiri, gaya ghost-merah --}}
+                    <button type="button" x-on:click="discardAndClose()" x-bind:disabled="savingAndClosing"
+                        title="Keluar tanpa menyimpan perubahan"
+                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150
+                               text-error bg-error/5 border border-error/20 hover:bg-error/10 hover:border-error/30
+                               focus:outline-none focus:ring-4 focus:ring-error/20
+                               disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 5v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
+                        </svg>
+                        Keluar
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <x-secondary-button type="button" x-on:click="showUnsavedWarning = false"
+                            x-bind:disabled="savingAndClosing" title="Lanjut edit form">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            Lanjut
+                        </x-secondary-button>
+                        <x-primary-button type="button" x-on:click="saveAndClose()"
+                            x-bind:disabled="savingAndClosing" title="Simpan semua lalu tutup">
+                            <span x-show="!savingAndClosing" class="flex items-center gap-1.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Simpan
+                            </span>
+                            <span x-show="savingAndClosing" x-cloak class="flex items-center gap-1">
+                                <x-loading /> Menyimpan...
+                            </span>
+                        </x-primary-button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -218,18 +292,32 @@
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center justify-end gap-2 px-5 py-4 bg-gray-50/70 dark:bg-gray-900/20">
-                    <x-secondary-button type="button" x-on:click="cancelSwitch()"
-                        x-bind:disabled="savingAndSwitching">
-                        Batal
-                    </x-secondary-button>
-                    <x-primary-button type="button" x-on:click="saveAndSwitch()"
-                        x-bind:disabled="savingAndSwitching">
-                        <span x-show="!savingAndSwitching">Simpan &amp; Pindah</span>
-                        <span x-show="savingAndSwitching" x-cloak class="flex items-center gap-1">
-                            <x-loading /> Menyimpan...
-                        </span>
-                    </x-primary-button>
+                <div class="flex items-center justify-between gap-2 px-5 py-4 bg-gray-50/70 dark:bg-gray-900/20">
+                    {{-- Aksi destruktif (buang perubahan tab aktif) dipisah di kiri, gaya ghost-merah --}}
+                    <button type="button" x-show="reloadMap[activeTab]" x-on:click="discardAndSwitch()"
+                        x-bind:disabled="savingAndSwitching" title="Pindah tanpa menyimpan perubahan tab ini"
+                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150
+                               text-error bg-error/5 border border-error/20 hover:bg-error/10 hover:border-error/30
+                               focus:outline-none focus:ring-4 focus:ring-error/20
+                               disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 5v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
+                        </svg>
+                        Pindah tanpa simpan
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <x-secondary-button type="button" x-on:click="cancelSwitch()"
+                            x-bind:disabled="savingAndSwitching">
+                            Batal
+                        </x-secondary-button>
+                        <x-primary-button type="button" x-on:click="saveAndSwitch()"
+                            x-bind:disabled="savingAndSwitching">
+                            <span x-show="!savingAndSwitching">Simpan &amp; Pindah</span>
+                            <span x-show="savingAndSwitching" x-cloak class="flex items-center gap-1">
+                                <x-loading /> Menyimpan...
+                            </span>
+                        </x-primary-button>
+                    </div>
                 </div>
             </div>
         </div>
