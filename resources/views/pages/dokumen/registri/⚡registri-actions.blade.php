@@ -186,6 +186,9 @@ new class extends Component {
         }
 
         try {
+            if ($this->formMode === 'edit') {
+                DokumenService::pastikanTidakTerkunci($this->originalId);
+            }
             $json = $this->formMode === 'edit' ? DokumenService::baca($this->originalId)[1] : DokumenService::jsonKosong();
             $json['akreditasi'] = array_values($this->akreditasi);
             $json['berkas'] = $berkas;

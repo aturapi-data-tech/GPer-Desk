@@ -62,10 +62,13 @@ Route::middleware(['auth'])->group(function () {
     // ===========================================
     Route::livewire('/dokumen/registri', 'pages::dokumen.registri.registri')->name('dokumen.registri');
     Route::livewire('/dokumen/pengaturan', 'pages::dokumen.pengaturan.pengaturan')->name('dokumen.pengaturan');
+    Route::livewire('/dokumen/ttd-saya', 'pages::dokumen.ttd-saya.ttd-saya')->name('dokumen.ttd-saya');
     Route::get('/dokumen/{dokId}/cetak.pdf', [\App\Http\Controllers\DokumenCetakController::class, 'pdf'])
         ->whereNumber('dokId')->name('dokumen.cetak.pdf');
     Route::get('/dokumen/{dokId}/unduh.docx', [\App\Http\Controllers\DokumenCetakController::class, 'docx'])
         ->whereNumber('dokId')->name('dokumen.cetak.docx');
+    Route::get('/dokumen/{dokId}/gambar/{src}', [\App\Http\Controllers\DokumenCetakController::class, 'gambar'])
+        ->whereNumber('dokId')->name('dokumen.gambar');
     Route::get('/dokumen/{dokId}/berkas/{berkasId}', [\App\Http\Controllers\DokumenCetakController::class, 'berkas'])
         ->whereNumber('dokId')->name('dokumen.berkas');
 

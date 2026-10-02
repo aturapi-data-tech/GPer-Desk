@@ -23,13 +23,14 @@ class DokumenService
 {
     public const STATUS = [
         'DRAF'          => 'Draf',
+        'DIAJUKAN'      => 'Diajukan (menunggu TTD)',
         'BERLAKU'       => 'Berlaku',
         'TIDAK_BERLAKU' => 'Tidak Berlaku',
         'DICABUT'       => 'Dicabut',
     ];
 
     public const STATUS_BADGE = [
-        'DRAF' => 'gray', 'BERLAKU' => 'success', 'TIDAK_BERLAKU' => 'warning', 'DICABUT' => 'danger',
+        'DRAF' => 'gray', 'DIAJUKAN' => 'info', 'BERLAKU' => 'success', 'TIDAK_BERLAKU' => 'warning', 'DICABUT' => 'danger',
     ];
 
     // BAB VI Pengamanan Naskah Dinas
@@ -370,6 +371,138 @@ class DokumenService
         self::catat($dokId, 'REVISI', 'Revisi ' . ($rev + 1) . ($alasan !== '' ? " — {$alasan}" : ''));
 
         return $rev + 1;
+    }
+
+    // ─── Tanda tangan & kunci (pola modul dokumen sirus) ─────────────────────
+    //
+    // Draf → (Ajukan) → DIAJUKAN → (petugas berwenang: TTD Saya) → terkunci, BERLAKU, bisa dilihat/dicetak
+    // tanpa tanda air. Buka kunci hanya peran tertentu, wajib alasan, tercatat di riwayat.
+    // Spesimen TTD = users.myuser_ttd_image (sama dengan sirus); hanya dibubuhkan oleh pemiliknya sendiri.
+
+    public static function terkunci(array $json): bool
+    {
+        return filled($json['ttd']['kode'] ?? null);
+    }
+
+    public static function bolehTtd(): bool
+    {
+        return (bool) auth()->user()?->hasAnyRole(config('dokumen.peran_ttd'));
+    }
+
+    public static function bolehBukaKunci(): bool
+    {
+        return (bool) auth()->user()?->hasAnyRole(config('dokumen.peran_buka_kunci'));
+    }
+
+    /** Tolak perubahan isi pada dokumen yang sudah ditandatangani. */
+    public static function pastikanTidakTerkunci(int $dokId): void
+    {
+        $data = self::baca($dokId);
+        if ($data && self::terkunci($data[1])) {
+            throw new \DomainException('Dokumen sudah ditandatangani dan terkunci — buka kunci dulu (wewenang khusus) untuk mengubah.');
+        }
+    }
+
+    /** Event penyusun yang tepat: isi.naskah (format apa pun) → penyusun naskah; SPO tanpa naskah → penyusun SPO. */
+    public static function penyusun(int $dokId): string
+    {
+        [$row, $json] = self::baca($dokId) ?? [null, []];
+        if (filled($json['isi']['naskah'] ?? null)) {
+            return 'dokumen.registri.openNaskah';
+        }
+
+        return \App\Support\TataNaskah::format($row?->jenis_kode) === 'spo' ? 'dokumen.registri.openSpo' : 'dokumen.registri.openNaskah';
+    }
+
+    public static function punyaIsi(array $json): bool
+    {
+        return filled($json['isi']['spo'] ?? null) || filled($json['isi']['naskah'] ?? null);
+    }
+
+    public static function ajukan(int $dokId, string $catatan = ''): void
+    {
+        [$row, $json] = self::baca($dokId) ?? throw new \DomainException('Dokumen tidak ditemukan.');
+        if (self::terkunci($json)) {
+            throw new \DomainException('Dokumen sudah ditandatangani.');
+        }
+        if (! self::punyaIsi($json)) {
+            throw new \DomainException('Isi dokumen belum disusun — susun dulu sebelum diajukan.');
+        }
+        DB::table('dok_dokumen')->where('dok_id', $dokId)->update(['status' => 'DIAJUKAN']);
+        self::catat($dokId, 'AJUKAN', $catatan !== '' ? $catatan : 'diajukan untuk ditandatangani', function ($json) use ($catatan) {
+            $json['pengajuan'] = ['waktu' => now()->format('Y-m-d H:i:s'), 'oleh' => self::namaPengguna(), 'catatan' => $catatan];
+            return $json;
+        });
+    }
+
+    public static function tandatangani(int $dokId): array
+    {
+        if (! self::bolehTtd()) {
+            throw new \DomainException('Anda tidak berwenang menandatangani dokumen.');
+        }
+        $u = auth()->user();
+        $kode = (string) ($u->myuser_code ?? $u->id);
+        if (! \App\Support\TtdUser::pathBerkasDariKode($kode)) {
+            throw new \DomainException('Spesimen tanda tangan Anda belum ada — simpan dulu di menu "Tanda Tangan Saya".');
+        }
+
+        return DB::transaction(function () use ($dokId, $u, $kode) {
+            DB::table('dok_dokumen')->where('dok_id', $dokId)->lockForUpdate()->first();
+            [$row, $json] = self::baca($dokId) ?? throw new \DomainException('Dokumen tidak ditemukan.');
+            if (self::terkunci($json)) {
+                throw new \DomainException('Dokumen sudah ditandatangani ' . ($json['ttd']['nama'] ?? '') . '.');
+            }
+            if (! self::punyaIsi($json)) {
+                throw new \DomainException('Isi dokumen belum disusun.');
+            }
+            $jenis = self::jenis()[$row->jenis_kode] ?? null;
+            $nomor = $row->dok_no;
+            if (blank($nomor) && $jenis && filled($jenis->pola_nomor) && filled($jenis->seri)) {
+                $nomor = self::ambilNomor($dokId);          // nomor resmi terbit saat ditetapkan
+            }
+            $waktu = now();
+            $ttd = [
+                'nama' => (string) $u->name,
+                'jabatan' => (string) ($u->jabatan ?: ($json['isi']['naskah']['kaki']['jabatan'] ?? '')),
+                'kode' => $kode,
+                'waktu' => $waktu->format('Y-m-d H:i:s'),
+                'verifikasi' => strtoupper(substr(sha1($dokId . '|' . $kode . '|' . $waktu->timestamp . '|' . $nomor . '|' . config('app.key')), 0, 12)),
+            ];
+            DB::table('dok_dokumen')->where('dok_id', $dokId)->update([
+                'status' => 'BERLAKU',
+                'tgl_terbit' => $row->tgl_terbit ?: $waktu->copy()->startOfDay(),
+            ]);
+            self::catat($dokId, 'TTD', "ditandatangani {$ttd['nama']} — kode verifikasi {$ttd['verifikasi']}", function ($json) use ($ttd) {
+                $json['ttd'] = $ttd;
+                return $json;
+            });
+
+            return $ttd;
+        });
+    }
+
+    public static function bukaKunci(int $dokId, string $alasan): void
+    {
+        if (! self::bolehBukaKunci()) {
+            throw new \DomainException('Buka kunci hanya untuk peran berwenang.');
+        }
+        if (trim($alasan) === '') {
+            throw new \DomainException('Alasan buka kunci wajib diisi.');
+        }
+        DB::table('dok_dokumen')->where('dok_id', $dokId)->update(['status' => 'DRAF']);
+        self::catat($dokId, 'BUKA_KUNCI', $alasan, function ($json) {
+            $json['ttdLama'][] = ($json['ttd'] ?? []) + ['dibukaPada' => now()->format('Y-m-d H:i:s'), 'dibukaOleh' => self::namaPengguna()];
+            unset($json['ttd']);
+            return $json;
+        });
+    }
+
+    /** Gambar TTD sebagai data URI (DomPDF/PhpWord) dari kode penanda-tangan; null bila tidak ada. */
+    public static function gambarTtd(?string $kode): ?string
+    {
+        $path = \App\Support\TtdUser::pathBerkasDariKode($kode);
+
+        return $path ? $path : null;
     }
 
     // ─── Berkas ───────────────────────────────────────────────────────────────

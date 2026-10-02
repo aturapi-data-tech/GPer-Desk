@@ -125,14 +125,14 @@ END;
 --    bulan dua angka, deret SPO tidak direset tahunan; SK direset tiap tahun).
 --    {RS} diambil dari config('dokumen.kode_rs') — bawaan RSUI-MDN, bisa diganti di .env.
 INSERT INTO DOK_JENIS VALUES ('EKS',   'Regulasi Eksternal (Perundang-undangan)', 0, 'EKSTERNAL',     NULL,  NULL,  NULL,                            'N','N', NULL,       'N',  1,'Y');
-INSERT INTO DOK_JENIS VALUES ('PERDIR','Peraturan Direktur',                      1, 'REGULASI',      'SK',  'SK',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'N', 10,'Y');
-INSERT INTO DOK_JENIS VALUES ('SK',    'Keputusan Direktur',                      1, 'REGULASI',      'SK',  'SK',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'N', 11,'Y');
-INSERT INTO DOK_JENIS VALUES ('KEB',   'Kebijakan',                               1, 'REGULASI',      'SK',  'SK',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'N', 12,'Y');
-INSERT INTO DOK_JENIS VALUES ('PED',   'Pedoman',                                 2, 'REGULASI',      NULL,  NULL,  NULL,                            'N','N','Direktur',  'N', 20,'Y');
-INSERT INTO DOK_JENIS VALUES ('PAN',   'Panduan',                                 2, 'REGULASI',      NULL,  NULL,  NULL,                            'N','N','Direktur',  'N', 21,'Y');
-INSERT INTO DOK_JENIS VALUES ('PROG',  'Program Kerja',                           2, 'REGULASI',      NULL,  NULL,  NULL,                            'N','N','Direktur',  'N', 22,'Y');
+INSERT INTO DOK_JENIS VALUES ('PERDIR','Peraturan Direktur',                      1, 'REGULASI',      'SK',  'SK',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'Y', 10,'Y');
+INSERT INTO DOK_JENIS VALUES ('SK',    'Keputusan Direktur',                      1, 'REGULASI',      'SK',  'SK',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'Y', 11,'Y');
+INSERT INTO DOK_JENIS VALUES ('KEB',   'Kebijakan',                               1, 'REGULASI',      'SK',  'SK',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'Y', 12,'Y');
+INSERT INTO DOK_JENIS VALUES ('PED',   'Pedoman',                                 2, 'REGULASI',      NULL,  NULL,  NULL,                            'N','N','Direktur',  'Y', 20,'Y');
+INSERT INTO DOK_JENIS VALUES ('PAN',   'Panduan',                                 2, 'REGULASI',      NULL,  NULL,  NULL,                            'N','N','Direktur',  'Y', 21,'Y');
+INSERT INTO DOK_JENIS VALUES ('PROG',  'Program Kerja',                           2, 'REGULASI',      NULL,  NULL,  NULL,                            'N','N','Direktur',  'Y', 22,'Y');
 INSERT INTO DOK_JENIS VALUES ('SPO',   'Standar Prosedur Operasional',            3, 'REGULASI',      'SPO', 'SPO', '{NNN}/{KODE}{UNIT}/{RS}/{MM}/{YYYY}','N','N','Direktur','Y', 30,'Y');
-INSERT INTO DOK_JENIS VALUES ('SE',    'Surat Edaran',                            3, 'REGULASI',      'SE',  'SE',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'N', 31,'Y');
+INSERT INTO DOK_JENIS VALUES ('SE',    'Surat Edaran',                            3, 'REGULASI',      'SE',  'SE',  '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'Y', 31,'Y');
 INSERT INTO DOK_JENIS VALUES ('FORM',  'Formulir',                                4, 'PELAKSANAAN',   NULL,  NULL,  NULL,                            'N','N', NULL,       'N', 40,'Y');
 INSERT INTO DOK_JENIS VALUES ('UND',   'Surat Undangan',                          5, 'KORESPONDENSI', 'Und', 'UND', '{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N', NULL,       'N', 50,'Y');
 INSERT INTO DOK_JENIS VALUES ('STGS',  'Surat Tugas',                             5, 'KORESPONDENSI', 'STgs','STGS','{NNN}/{KODE}/{RS}/{MM}/{YYYY}',   'Y','N','Direktur',  'N', 51,'Y');

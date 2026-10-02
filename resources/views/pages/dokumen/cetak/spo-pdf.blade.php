@@ -6,7 +6,8 @@
 @php
     $izin = '<p><br><b><strong><i><em><u><ol><ul><li><table><thead><tbody><tr><td><th><sup><sub>';
     $logo = public_path('images/Logo Persegi.png');
-    $tanda = ['DRAF' => 'DRAF', 'TIDAK_BERLAKU' => 'TIDAK BERLAKU', 'DICABUT' => 'DICABUT'][$dok->status] ?? null;
+    $tanda = ['TIDAK_BERLAKU' => 'TIDAK BERLAKU', 'DICABUT' => 'DICABUT'][$dok->status] ?? ($ttd ? null : 'DRAF');
+    $ttdImg = $ttd ? \App\Services\DokumenService::gambarTtd($ttd['kode'] ?? null) : null;
     $tinggiH1 = 2.76; // cm — tinggi terukur kop (judul 1,35 + nomor 0,85 + padding & garis)
 @endphp
 <!DOCTYPE html>
@@ -103,8 +104,13 @@
                             <span class="kecil">Tanggal Terbit</span><br><br>{{ $tanggal ?: '-' }}</td>
                         <td class="tengah" style="width: {{ $pctKanan($k3 + $k4) }}; vertical-align: top; border: 0">
                             Ditetapkan,<br>{{ $penetap['jabatan'] ?? 'Direktur' }}
-                            <br><br><br><br>
-                            <span class="tebal">{{ $penetap['nama'] ?? '' }}</span>
+                            @if ($ttdImg)
+                                <br><img src="{{ $ttdImg }}" style="height: 1.3cm"><br>
+                            @else
+                                <br><br><br><br>
+                            @endif
+                            <span class="tebal">{{ $ttd['nama'] ?? ($penetap['nama'] ?? '') }}</span>
+                            @if ($ttd)<div style="font-size: 6.5pt; color: #555">TTE {{ \Carbon\Carbon::parse($ttd['waktu'])->format('d/m/Y H:i') }} · {{ $ttd['verifikasi'] }}</div>@endif
                         </td>
                     </tr>
                 </table>

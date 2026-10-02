@@ -12,11 +12,15 @@ new class extends Component {
     public array $jalur = [];      // induk sampai akar
     public array $anak = [];
     public string $alasanRevisi = '';
+    public string $alasanBuka = '';
+    public string $catatanAjuan = '';
+    public bool $pratinjau = false;
 
     #[On('dokumen.registri.openDetail')]
     public function buka(int $dokId): void
     {
         $this->dokId = $dokId;
+        $this->pratinjau = false;
         $this->muat();
         $this->dispatch('open-modal', name: 'dokumen-registri-detail');
     }
@@ -70,6 +74,35 @@ new class extends Component {
         $this->jalankan(function () { DokumenService::naikkanRevisi($this->dokId, trim($this->alasanRevisi)); $this->alasanRevisi = ''; }, 'Nomor revisi dinaikkan.');
     }
 
+    public function ajukan(): void
+    {
+        $this->jalankan(function () { DokumenService::ajukan($this->dokId, trim($this->catatanAjuan)); $this->catatanAjuan = ''; },
+            'Dokumen diajukan untuk ditandatangani.');
+    }
+
+    public function tandatangani(): void
+    {
+        try {
+            $ttd = DokumenService::tandatangani($this->dokId);
+            $this->dispatch('toast', type: 'success', message: "Ditandatangani — kode verifikasi {$ttd['verifikasi']}. Dokumen terkunci.");
+            $this->dispatch('dokumen.registri.saved');
+        } catch (\DomainException $e) {
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+        }
+    }
+
+    public function bukaKunci(): void
+    {
+        try {
+            DokumenService::bukaKunci($this->dokId, $this->alasanBuka);
+            $this->alasanBuka = '';
+            $this->dispatch('toast', type: 'success', message: 'Kunci dibuka — dokumen kembali menjadi draf.');
+            $this->dispatch('dokumen.registri.saved');
+        } catch (\DomainException $e) {
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+        }
+    }
+
     public function tambahTurunan(): void
     {
         $this->dispatch('close-modal', name: 'dokumen-registri-detail');
@@ -85,7 +118,7 @@ new class extends Component {
     public function susun(): void
     {
         $this->dispatch('close-modal', name: 'dokumen-registri-detail');
-        $this->dispatch('dokumen.registri.openSpo', dokId: $this->dokId);
+        $this->dispatch(DokumenService::penyusun($this->dokId), dokId: $this->dokId);
     }
 
     public function lompat(int $dokId): void
@@ -139,6 +172,42 @@ new class extends Component {
                         <div><div class="text-xs text-muted">Bagian</div>{{ $dok['unit_kode'] ?: '—' }}</div>
                         <div><div class="text-xs text-muted">Diperbarui</div>{{ $dok['updated_by'] }}</div>
                     </div>
+                    @php
+                        $terkunci = DokumenService::terkunci($json);
+                        $adaIsi = DokumenService::punyaIsi($json);
+                    @endphp
+                    {{-- STATUS TANDA TANGAN (pola modul dokumen sirus) --}}
+                    @if ($terkunci)
+                        <div class="flex items-center gap-3 px-4 py-3 text-sm border rounded-xl border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-700">
+                            <x-signature.ttd-gambar :code="$json['ttd']['kode']" :name="$json['ttd']['nama']" class="!w-40" />
+                            <div>
+                                <b>Ditandatangani</b> {{ $json['ttd']['nama'] }}{{ $json['ttd']['jabatan'] ? ' — ' . $json['ttd']['jabatan'] : '' }}<br>
+                                {{ \Carbon\Carbon::parse($json['ttd']['waktu'])->format('d/m/Y H:i') }} · kode verifikasi <span class="font-mono">{{ $json['ttd']['verifikasi'] }}</span><br>
+                                <span class="text-xs text-muted">Dokumen terkunci — isi tidak bisa diubah.</span>
+                            </div>
+                        </div>
+                    @elseif ($dok['status'] === 'DIAJUKAN')
+                        <div class="px-4 py-3 text-sm border rounded-xl border-sky-300 bg-sky-50 dark:bg-sky-900/20 dark:border-sky-700">
+                            <b>Menunggu tanda tangan</b> — diajukan {{ $json['pengajuan']['oleh'] ?? '' }} {{ $json['pengajuan']['waktu'] ?? '' }}{{ filled($json['pengajuan']['catatan'] ?? '') ? ' · ' . $json['pengajuan']['catatan'] : '' }}
+                        </div>
+                    @else
+                        <div class="px-4 py-3 text-sm border rounded-xl border-hairline bg-surface-soft dark:bg-gray-800 dark:border-gray-700">
+                            <b>Draf</b> — {{ $adaIsi ? 'dicetak dengan tanda air DRAF sampai ditandatangani petugas berwenang.' : 'isi belum disusun.' }}
+                            @if ($json['isiSumber']['perluDicek'] ?? false)
+                                <x-badge variant="warning" class="ml-1">isi hasil konversi otomatis — perlu dicek</x-badge>
+                            @endif
+                        </div>
+                    @endif
+
+                    @if ($adaIsi)
+                        <div>
+                            <x-secondary-button type="button" wire:click="$toggle('pratinjau')">{{ $pratinjau ? 'Sembunyikan pratinjau' : 'Lihat dokumen' }}</x-secondary-button>
+                            @if ($pratinjau)
+                                <iframe src="{{ route('dokumen.cetak.pdf', $dok['dok_id']) }}#view=FitH" class="w-full mt-2 border rounded-xl border-hairline" style="height: 70vh" title="Pratinjau dokumen"></iframe>
+                            @endif
+                        </div>
+                    @endif
+
                     @if (filled($json['ringkasan'] ?? ''))
                         <p class="text-sm">{{ $json['ringkasan'] }}</p>
                     @endif
@@ -169,10 +238,14 @@ new class extends Component {
                             @empty
                                 <span class="text-sm text-muted">Belum ada berkas.</span>
                             @endforelse
-                            @if (filled($json['isi']['spo'] ?? null))
-                                <div class="flex gap-2 pt-2 border-t border-hairline">
-                                    <a href="{{ route('dokumen.cetak.pdf', $dok['dok_id']) }}" target="_blank"><x-cetak-button type="button">Cetak SPO (PDF)</x-cetak-button></a>
-                                    <a href="{{ route('dokumen.cetak.docx', $dok['dok_id']) }}"><x-secondary-button type="button">Unduh SPO (DOCX)</x-secondary-button></a>
+                            @if (filled($json['isi']['spo'] ?? null) || filled($json['isi']['naskah'] ?? null))
+                                <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-hairline">
+                                    <span class="text-xs text-muted">Dibangkitkan dari isi JSON (tata naskah):</span>
+                                    <a href="{{ route('dokumen.cetak.pdf', $dok['dok_id']) }}" target="_blank"><x-cetak-button type="button">Cetak PDF</x-cetak-button></a>
+                                    <a href="{{ route('dokumen.cetak.docx', $dok['dok_id']) }}"><x-secondary-button type="button">Unduh DOCX</x-secondary-button></a>
+                                    @if ($json['isiSumber']['perluDicek'] ?? false)
+                                        <x-badge variant="warning">isi hasil konversi otomatis — perlu dicek</x-badge>
+                                    @endif
                                 </div>
                             @endif
                         </div>
@@ -213,30 +286,44 @@ new class extends Component {
                     </x-border-form>
                 </div>
 
-                @if (DokumenService::bolehUbah())
-                    <div class="sticky bottom-0 px-6 py-4 border-t bg-surface-soft border-hairline dark:bg-gray-900 dark:border-gray-700">
-                        <div class="flex flex-wrap items-center justify-end gap-2">
-                            @if (! $dok['dok_no'] && $dok['berpola'])
-                                <x-confirm-button variant="primary" action="ambilNomor" title="Ambil nomor registrasi"
-                                    message="Nomor resmi akan diterbitkan dan tidak bisa ditarik kembali. Lanjutkan?" confirmText="Ambil nomor">Ambil Nomor</x-confirm-button>
+                <div class="sticky bottom-0 px-6 py-4 border-t bg-surface-soft border-hairline dark:bg-gray-900 dark:border-gray-700">
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                        @if ($terkunci)
+                            @if (DokumenService::bolehBukaKunci())
+                                <x-text-input wire:model="alasanBuka" class="w-56" placeholder="alasan buka kunci (wajib)" />
+                                <x-confirm-button variant="danger-soft" action="bukaKunci" title="Buka kunci dokumen"
+                                    message="Tanda tangan dicabut dan dokumen kembali menjadi draf. Lanjutkan?">Buka Kunci</x-confirm-button>
                             @endif
-                            @if ($dok['status'] !== 'BERLAKU')
-                                <x-confirm-button variant="primary" action="ubahStatus('BERLAKU')" title="Berlakukan dokumen" message="Tandai dokumen ini BERLAKU?">Berlakukan</x-confirm-button>
-                            @else
-                                <x-confirm-button variant="warning-soft" action="ubahStatus('TIDAK_BERLAKU')" title="Tidak berlaku" message="Tandai dokumen ini TIDAK BERLAKU (obsolete)?">Tidak Berlaku</x-confirm-button>
+                        @else
+                            @if (DokumenService::bolehUbah() && $adaIsi && $dok['status'] !== 'DIAJUKAN')
+                                <x-text-input wire:model="catatanAjuan" class="w-48" placeholder="catatan pengajuan" />
+                                <x-confirm-button variant="secondary" action="ajukan" title="Ajukan tanda tangan" message="Ajukan dokumen ini untuk ditandatangani?">Ajukan TTD</x-confirm-button>
                             @endif
-                            <div class="flex items-center gap-1">
-                                <x-text-input wire:model="alasanRevisi" class="w-48" placeholder="alasan revisi" />
-                                <x-confirm-button variant="secondary" action="naikkanRevisi" title="Naikkan revisi" message="Naikkan nomor revisi dokumen ini?">Revisi +1</x-confirm-button>
-                            </div>
-                            <x-secondary-button type="button" wire:click="tambahTurunan">+ Turunan</x-secondary-button>
-                            @if ($dok['bisa_disusun'] === 'Y')
-                                <x-secondary-button type="button" wire:click="susun">Susun isi</x-secondary-button>
+                            @if (DokumenService::bolehTtd() && $adaIsi)
+                                <x-confirm-button variant="primary" action="tandatangani" title="Tandatangani dokumen"
+                                    message="Spesimen tanda tangan Anda dibubuhkan, nomor resmi diterbitkan bila belum ada, dan dokumen dikunci. Lanjutkan?">Tandatangani &amp; Kunci</x-confirm-button>
                             @endif
-                            <x-primary-button type="button" wire:click="ubah">Ubah</x-primary-button>
-                        </div>
+                            @if (DokumenService::bolehUbah())
+                                @if (! $dok['dok_no'] && $dok['berpola'])
+                                    <x-confirm-button variant="secondary" action="ambilNomor" title="Ambil nomor registrasi"
+                                        message="Nomor resmi akan diterbitkan dan tidak bisa ditarik kembali. Lanjutkan?" confirmText="Ambil nomor">Ambil Nomor</x-confirm-button>
+                                @endif
+                                <div class="flex items-center gap-1">
+                                    <x-text-input wire:model="alasanRevisi" class="w-40" placeholder="alasan revisi" />
+                                    <x-confirm-button variant="secondary" action="naikkanRevisi" title="Naikkan revisi" message="Naikkan nomor revisi dokumen ini?">Revisi +1</x-confirm-button>
+                                </div>
+                                <x-secondary-button type="button" wire:click="tambahTurunan">+ Turunan</x-secondary-button>
+                                @if ($dok['bisa_disusun'] === 'Y' || $adaIsi)
+                                    <x-secondary-button type="button" wire:click="susun">Susun isi</x-secondary-button>
+                                @endif
+                                <x-primary-button type="button" wire:click="ubah">Ubah</x-primary-button>
+                            @endif
+                        @endif
+                        @if ($terkunci && DokumenService::bolehUbah() && $dok['status'] === 'BERLAKU')
+                            <x-confirm-button variant="warning-soft" action="ubahStatus('TIDAK_BERLAKU')" title="Tidak berlaku" message="Tandai dokumen ini TIDAK BERLAKU (obsolete)?">Tidak Berlaku</x-confirm-button>
+                        @endif
                     </div>
-                @endif
+                </div>
             </div>
         @endif
     </x-modal>

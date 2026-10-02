@@ -14,6 +14,25 @@ class User extends Authenticatable
     use HasFactory, Notifiable, HasRoles;
 
     /**
+     * Kompatibilitas komponen tanda tangan sirus (x-signature.ttd-petugas, App\Support\TtdUser):
+     * sirus memakai myuser_name / myuser_code / myuser_ttd_image. Di GPer nama = kolom name,
+     * kode = id (diisi otomatis), spesimen TTD = kolom myuser_ttd_image (database/schema/dokumen_ttd.sql).
+     */
+    public function getMyuserNameAttribute(): ?string
+    {
+        return $this->name;
+    }
+
+    protected static function booted(): void
+    {
+        static::created(function (User $u) {
+            if (empty($u->myuser_code)) {
+                \Illuminate\Support\Facades\DB::table('users')->where('id', $u->id)->update(['myuser_code' => (string) $u->id]);
+            }
+        });
+    }
+
+    /**
      * Kapabilitas tiket — sumber tunggal supaya tidak drift antar komponen.
      *
      * Konsep peran (GPER-Desk):

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\DokumenService;
+use App\Support\TataNaskah;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Str;
 use PhpOffice\PhpWord\PhpWord;
@@ -20,6 +21,301 @@ class DokumenCetakController extends Controller
     private const KOLOM_KOP = [3.5, 5.5, 4.0, 4.0];
     private const KOLOM_ISI = [3.6, 13.4];
 
+    // ─── Titik masuk: pilih pencetak menurut format naskah (TataNaskah::FORMAT_JENIS) ─────────
+
+    public function pdf(int $dokId): Response
+    {
+        return $this->formatDokumen($dokId) === 'spo' ? $this->spoPdf($dokId) : $this->naskahPdf($dokId);
+    }
+
+    public function docx(int $dokId): Response
+    {
+        return $this->formatDokumen($dokId) === 'spo' ? $this->spoDocx($dokId) : $this->naskahDocx($dokId);
+    }
+
+    /** Pencetak dipilih menurut ISI yang tersimpan: isi.spo → cetak SPO, isi.naskah → format naskahnya. */
+    private function formatDokumen(int $dokId): ?string
+    {
+        $data = DokumenService::baca($dokId);
+        abort_unless($data, 404);
+        $json = $data[1];
+        if (filled($json['isi']['spo'] ?? null)) {
+            return 'spo';
+        }
+        abort_if(blank($json['isi']['naskah'] ?? null), 404, 'Isi dokumen belum disusun.');
+
+        return $json['isi']['naskah']['format'] ?? 'umum';
+    }
+
+    /** DomPDF hanya membaca berkas di dalam chroot: aplikasi + akar arsip impor (gambar blok hasil konversi). */
+    private function chroot(): array
+    {
+        return array_values(array_filter([realpath(base_path()), realpath((string) config('dokumen.arsip_impor'))]));
+    }
+
+    /** Label DRAF di kepala halaman DOCX (PhpWord tidak punya tanda air teks). */
+    private function labelDraf($section, ?array $ttd, string $status): void
+    {
+        $label = ['TIDAK_BERLAKU' => 'TIDAK BERLAKU', 'DICABUT' => 'DICABUT'][$status] ?? ($ttd ? null : 'DRAF — belum ditandatangani');
+        if ($label) {
+            foreach ($section->getHeaders() as $h) {
+                $h->addText($label, ['color' => 'B0B0B0', 'bold' => true, 'size' => 9], ['alignment' => 'left', 'spaceAfter' => 0]);
+            }
+        }
+    }
+
+    private function gambarDocx($wadah, string $path, float $lebarMaksCm, float $tinggiMaksCm): void
+    {
+        [$w, $h] = @getimagesize($path) ?: [0, 0];
+        if (! $w || ! $h) {
+            return;
+        }
+        $k = min($lebarMaksCm / ($w / 96 * 2.54), $tinggiMaksCm / ($h / 96 * 2.54), 1.6);
+        $wadah->addImage($path, ['width' => Converter::cmToPoint($w / 96 * 2.54 * $k), 'height' => Converter::cmToPoint($h / 96 * 2.54 * $k), 'alignment' => 'center']);
+    }
+
+    private function dataNaskah(int $dokId): array
+    {
+        $data = DokumenService::baca($dokId);
+        abort_unless($data, 404);
+        [$row, $json] = $data;
+        $n = $json['isi']['naskah'] ?? [];
+        abort_if(blank($n['format'] ?? null), 404, 'Isi naskah belum disusun.');
+        $this->periksaAkses($row);
+        $row->dok_judul = DokumenService::judul($row, $json);
+        $tgl = ($n['kaki']['tanggal'] ?? '') ?: $row->tgl_terbit;
+
+        return [
+            'dok' => $row, 'n' => $n, 'ttd' => $json['ttd'] ?? null,
+            'lampiran' => $n['format'] === 'bab' ? TataNaskah::lampiranDari($row->induk_id ? (int) $row->induk_id : null) : null,
+            'tanggal' => DokumenService::tanggalIndonesia($tgl),
+        ];
+    }
+
+    private function naskahPdf(int $dokId): Response
+    {
+        $d = $this->dataNaskah($dokId);
+        $pdf = Pdf::loadView('pages.dokumen.cetak.naskah-pdf', $d)->setPaper('A4', 'portrait')
+            ->setOption('chroot', $this->chroot());
+        $dompdf = $pdf->getDomPDF();
+        $dompdf->render();
+        if ($d['n']['format'] === 'bab') {
+            // nomor halaman di tengah bawah untuk naskah berbab (Pedoman/Panduan/Program)
+            $font = $dompdf->getFontMetrics()->getFont('Arial', 'normal');
+            $dompdf->getCanvas()->page_script(function ($nomor, $jumlah, $kanvas, $metrik) use ($font) {
+                $t = (string) $nomor;
+                $kanvas->text((595.28 - $metrik->getTextWidth($t, $font, 10)) / 2, 841.89 - 36, $t, $font, 10);
+            });
+        }
+        DokumenService::catat($dokId, 'CETAK', 'PDF');
+
+        return response($dompdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
+        ]);
+    }
+
+    private function namaBerkasNaskah(object $dok, string $ext): string
+    {
+        $jenis = DokumenService::jenis()[$dok->jenis_kode]->nama ?? $dok->jenis_kode;
+        $no = $dok->dok_no ? Str::before($dok->dok_no, '/') . ' - ' : '';
+
+        return Str::limit(preg_replace('/[^\pL\pN ,.-]+/u', ' ', "{$jenis} {$no}{$dok->dok_judul}"), 110, '') . '.' . $ext;
+    }
+
+    /** DOCX naskah dinas: kop resmi sebagai gambar latar header (seperti pasang_kop.py), isi dari JSON. */
+    private function naskahDocx(int $dokId): Response
+    {
+        $d = $this->dataNaskah($dokId);
+        ['dok' => $dok, 'n' => $n, 'lampiran' => $lampiran, 'tanggal' => $tanggal] = $d;
+        $word = new PhpWord();
+        $word->setDefaultFontName('Arial');
+        $word->setDefaultFontSize(11);
+        $cm = fn (float $v) => (int) Converter::cmToTwip($v);
+        $section = $word->addSection(['paperSize' => 'A4', 'marginTop' => $cm(7.37), 'marginLeft' => $cm(2.5),
+            'marginRight' => $cm(2.5), 'marginBottom' => $cm(2.0), 'headerHeight' => 0]);
+        $kop = public_path('images/kop/kop_portrait.png');
+        if (is_file($kop)) {
+            $section->addHeader()->addImage($kop, [
+                'width' => Converter::cmToPoint(21.0), 'height' => Converter::cmToPoint(29.7),
+                'positioning' => 'absolute', 'posHorizontalRel' => 'page', 'posVerticalRel' => 'page',
+                'posHorizontal' => 'absolute', 'posVertical' => 'absolute', 'marginLeft' => 0, 'marginTop' => 0,
+                'wrappingStyle' => 'behind',
+            ]);
+        }
+        if ($n['format'] === 'bab') {
+            $section->addFooter()->addPreserveText('{PAGE}', ['size' => 10], ['alignment' => 'center']);
+        }
+        $this->labelDraf($section, $d['ttd'], $dok->status);
+        if ($n['format'] === 'umum') {
+            foreach ($n['blok'] ?? [] as $b) {
+                if (($b['tipe'] ?? '') === 'gambar') {
+                    if ($g = TataNaskah::pathGambar($b['src'] ?? null)) {
+                        $this->gambarDocx($section, $g, 16.0, 19.5);
+                    }
+                } elseif (filled(trim(strip_tags($b['html'] ?? '')))) {
+                    $this->tulisHtml($word, $section, $this->rapikanHtml($b['html']));
+                }
+            }
+        }
+        $tengahTebal = ['bold' => true];
+        $tengah = ['alignment' => 'center', 'spaceAfter' => 0];
+        $rapat = ['spaceAfter' => 60];
+        $tanpaGaris = ['borderSize' => 0, 'borderColor' => 'FFFFFF', 'cellMargin' => 0];
+
+        $konsideran = function (array $baris) use ($section, $cm, $tanpaGaris) {
+            $t = $section->addTable($tanpaGaris);
+            foreach ($baris as [$label, $tanda, $nomor, $isi, $tebal]) {
+                $t->addRow();
+                $t->addCell($cm(2.6))->addText($label, [], ['spaceAfter' => 60]);
+                $t->addCell($cm(0.5))->addText($tanda, [], ['spaceAfter' => 60]);
+                if ($nomor !== null) {
+                    $t->addCell($cm(0.7))->addText($nomor, [], ['spaceAfter' => 60]);
+                    $t->addCell($cm(12.2))->addText(htmlspecialchars($isi), $tebal ? ['bold' => true] : [], ['spaceAfter' => 60, 'alignment' => 'both']);
+                } else {
+                    $t->addCell($cm(12.9), ['gridSpan' => 2])->addText(htmlspecialchars($isi), $tebal ? ['bold' => true] : [], ['spaceAfter' => 60, 'alignment' => $tebal ? 'left' : 'both']);
+                }
+            }
+        };
+
+        if (in_array($n['format'], ['peraturan', 'keputusan', 'edaran'], true)) {
+            $section->addText(htmlspecialchars(mb_strtoupper($n['judulJenis'] ?? '')), $tengahTebal, $tengah);
+            $section->addText(htmlspecialchars('NOMOR ' . ($dok->dok_no ?: '…')), $tengahTebal, $tengah);
+            $section->addText('TENTANG', $tengahTebal, ['alignment' => 'center', 'spaceBefore' => 120, 'spaceAfter' => 0]);
+            $section->addText(htmlspecialchars(mb_strtoupper($n['tentang'] ?? '')), $tengahTebal, ['alignment' => 'center', 'spaceAfter' => 240]);
+        }
+        if (in_array($n['format'], ['peraturan', 'keputusan'], true)) {
+            $section->addText(htmlspecialchars(mb_strtoupper($n['pembuat'] ?? '')), $tengahTebal, ['alignment' => 'center', 'spaceAfter' => 200]);
+            $baris = [];
+            foreach ($n['menimbang'] ?? [] as $i => $b) {
+                $baris[] = [$i ? '' : 'Menimbang', $i ? '' : ':', TataNaskah::huruf($i) . '.', $b, false];
+            }
+            foreach ($n['mengingat'] ?? [] as $i => $b) {
+                $baris[] = [$i ? '' : 'Mengingat', $i ? '' : ':', ($i + 1) . '.', $b, false];
+            }
+            $konsideran($baris);
+            $section->addText('MEMUTUSKAN:', $tengahTebal, ['alignment' => 'center', 'spaceBefore' => 120, 'spaceAfter' => 120]);
+            $konsideran([['Menetapkan', ':', null, mb_strtoupper(TataNaskah::menetapkan($n)), true]]);
+            if (! empty($n['pasal'])) {                 // Pasal bila ada, selain itu diktum
+                foreach ($n['pasal'] as $i => $p) {
+                    $section->addText('Pasal ' . ($i + 1), $tengahTebal, ['alignment' => 'center', 'spaceBefore' => 160, 'spaceAfter' => 60]);
+                    $this->tulisHtml($word, $section, $this->rapikanHtml($p['isi'] ?: '<p>-</p>'));
+                }
+            } else {
+                $t = $section->addTable($tanpaGaris);
+                foreach ($n['diktum'] ?? [] as $i => $dk) {
+                    $t->addRow();
+                    $t->addCell($cm(2.6))->addText(TataNaskah::DIKTUM[$i] ?? 'KE-' . ($i + 1), ['bold' => true], $rapat);
+                    $t->addCell($cm(0.5))->addText(':', [], $rapat);
+                    $this->tulisHtml($word, $t->addCell($cm(12.9)), $this->rapikanHtml($dk['isi'] ?: '<p>-</p>'));
+                }
+            }
+        }
+        if ($n['format'] === 'edaran') {
+            $section->addText('Yth.', [], $rapat);
+            foreach ($n['yth'] ?? [] as $i => $y) {
+                $section->addText(($i + 1) . '. ' . htmlspecialchars($y), [], ['indentation' => ['left' => 360], 'spaceAfter' => 40]);
+            }
+            $this->tulisHtml($word, $section, $this->rapikanHtml($n['isi'] ?: '<p>-</p>'));
+        }
+        if ($n['format'] === 'bab') {
+            $romawi = (TataNaskah::SISTEMATIKA[$n['sistematika'] ?? ''][1] ?? 'BAB') === 'romawi';
+            if ($lampiran) {
+                $t = $section->addTable(['borderSize' => 0, 'borderColor' => 'FFFFFF', 'layout' => 'fixed', 'cellMargin' => 30,
+                    'indent' => new \PhpOffice\PhpWord\ComplexType\TblWidth($cm(7.0))]);
+                foreach ([['LAMPIRAN', mb_strtoupper($lampiran['nama'])], ['NOMOR', $lampiran['nomor']], ['TENTANG', mb_strtoupper($lampiran['tentang'])]] as [$k, $v]) {
+                    $t->addRow();
+                    $t->addCell($cm(2.5))->addText($k, ['size' => 10], ['spaceAfter' => 0]);
+                    $t->addCell($cm(0.5))->addText(':', ['size' => 10], ['spaceAfter' => 0]);
+                    $t->addCell($cm(6.0))->addText(htmlspecialchars($v), ['size' => 10], ['spaceAfter' => 0]);
+                }
+                $section->addTextBreak();
+            }
+            $section->addText(htmlspecialchars(mb_strtoupper($n['judul'] ?? $dok->dok_judul)), $tengahTebal, ['alignment' => 'center', 'spaceAfter' => 240]);
+            foreach ($n['bab'] ?? [] as $i => $b) {
+                if ($romawi) {
+                    $section->addText(TataNaskah::romawi($i + 1) . '. ' . htmlspecialchars(mb_strtoupper($b['judul'] ?? '')), ['bold' => true], ['spaceBefore' => 160, 'spaceAfter' => 60]);
+                } else {
+                    $section->addText('BAB ' . TataNaskah::romawi($i + 1), $tengahTebal, ['alignment' => 'center', 'spaceAfter' => 0, 'pageBreakBefore' => $i > 0]);
+                    $section->addText(htmlspecialchars(mb_strtoupper($b['judul'] ?? '')), $tengahTebal, ['alignment' => 'center', 'spaceAfter' => 200]);
+                }
+                if (filled(trim(strip_tags($b['isi'] ?? '')))) {
+                    $this->tulisHtml($word, $section, $this->rapikanHtml($b['isi']));
+                }
+                foreach ($b['sub'] ?? [] as $j => $sb) {
+                    $section->addText(TataNaskah::huruf($j, true) . '. ' . htmlspecialchars($sb['judul'] ?? ''), ['bold' => true], ['spaceBefore' => 120, 'spaceAfter' => 40, 'indentation' => ['left' => $romawi ? 340 : 0]]);
+                    if (filled(trim(strip_tags($sb['isi'] ?? '')))) {
+                        $this->tulisHtml($word, $section, $this->rapikanHtml($sb['isi']));
+                    }
+                }
+            }
+            if (filled(trim(strip_tags($n['kepustakaan'] ?? '')))) {
+                $section->addText('KEPUSTAKAAN', $tengahTebal, ['alignment' => 'center', 'pageBreakBefore' => true, 'spaceAfter' => 200]);
+                $this->tulisHtml($word, $section, $this->rapikanHtml($n['kepustakaan']));
+            }
+        }
+
+        // Kaki (tanda tangan diikat dengan baris sebelumnya: keepNext)
+        $k = $n['kaki'] ?? [];
+        $ttd = $d['ttd'];
+        $ttdImg = $ttd ? DokumenService::gambarTtd($ttd['kode'] ?? null) : null;
+        if ($n['format'] === 'umum' && ! $ttd && blank($k['jabatan'] ?? '')) {
+            goto simpanDocx;                                    // dokumen umum tanpa penandatangan
+        }
+        $ikat = ['spaceAfter' => 0, 'keepNext' => true, 'keepLines' => true];
+        $section->addTextBreak(1, [], $ikat);
+        if (isset($k['mengetahui'])) {
+            $t = $section->addTable($tanpaGaris);
+            $t->addRow();
+            $kiri = $t->addCell($cm(8));
+            $kanan = $t->addCell($cm(8));
+            foreach (['Mengetahui,', $k['mengetahui']['jabatan'] ?? ''] as $x) $kiri->addText(htmlspecialchars($x), [], $ikat);
+            $kiri->addTextBreak(3);
+            $kiri->addText(htmlspecialchars($k['mengetahui']['nama'] ?? ''), ['bold' => true], ['spaceAfter' => 0]);
+            foreach (["{$k['tempat']}, " . ($tanggal ?: '…'), 'Penyusun,', $k['penyusun']['jabatan'] ?? ''] as $x) $kanan->addText(htmlspecialchars($x), [], $ikat);
+            $kanan->addTextBreak(3);
+            $kanan->addText(htmlspecialchars($k['penyusun']['nama'] ?? ''), ['bold' => true], ['spaceAfter' => 0]);
+        } else {
+            $kanan = ['indentation' => ['left' => $cm(8.5)]] + $ikat;
+            if ($n['format'] !== 'edaran') {
+                $section->addText('Ditetapkan di ' . htmlspecialchars($k['tempat'] ?? 'Tulungagung'), [], $kanan);
+                $section->addText('pada tanggal ' . ($tanggal ?: '…'), [], $kanan);
+                $section->addTextBreak(1, [], $kanan);
+            } else {
+                $section->addText(htmlspecialchars(($k['tempat'] ?? 'Tulungagung') . ', ' . ($tanggal ?: '…')), [], $kanan);
+            }
+            $section->addText(htmlspecialchars(mb_strtoupper(($k['jabatan'] ?? '') ?: ($ttd['jabatan'] ?? ''))), [], $kanan);
+            if ($ttdImg) {
+                // gambar di dalam paragraf berindentasi — PhpWord mengabaikan indentasi pada addImage langsung
+                $section->addTextRun(['indentation' => ['left' => $cm(8.5)], 'spaceAfter' => 0, 'keepNext' => true])
+                    ->addImage($ttdImg, ['height' => Converter::cmToPoint(2.0)]);
+            } else {
+                $section->addTextBreak(4, [], $kanan);
+            }
+            $section->addText(htmlspecialchars($ttd['nama'] ?? ($k['nama'] ?? '')), ['bold' => true], ['indentation' => ['left' => $cm(8.5)], 'spaceAfter' => 0]);
+            if ($ttd) {
+                $section->addText('Ditandatangani elektronik ' . \Carbon\Carbon::parse($ttd['waktu'])->format('d/m/Y H:i') . ' · kode ' . $ttd['verifikasi'],
+                    ['size' => 7, 'color' => '555555'], ['indentation' => ['left' => $cm(8.5)]]);
+            }
+            if (filled($k['nik'] ?? '')) {
+                $section->addText('NIK. ' . htmlspecialchars($k['nik']), [], ['indentation' => ['left' => $cm(8.5)]]);
+            }
+        }
+        if (! empty($n['tembusan'])) {
+            $section->addText('Tembusan:', ['size' => 10], ['spaceBefore' => 240, 'spaceAfter' => 0, 'keepNext' => true]);
+            foreach ($n['tembusan'] as $i => $t) {
+                $section->addText(($i + 1) . '. ' . htmlspecialchars($t), ['size' => 10], ['spaceAfter' => 0]);
+            }
+        }
+
+        simpanDocx:
+        $tmp = tempnam(sys_get_temp_dir(), 'naskah') . '.docx';
+        $word->save($tmp, 'Word2007');
+        DokumenService::catat($dokId, 'CETAK', 'DOCX');
+
+        return response()->download($tmp, $this->namaBerkasNaskah($dok, 'docx'))->deleteFileAfterSend(true);
+    }
+
     private function dataSpo(int $dokId): array
     {
         $data = DokumenService::baca($dokId);
@@ -31,6 +327,7 @@ class DokumenCetakController extends Controller
 
         return [
             'dok' => $row,
+            'ttd' => $json['ttd'] ?? null,
             'spo' => $json['isi']['spo'],
             'penetap' => $json['penandatangan']['ditetapkan'] ?? config('dokumen.pejabat.direktur'),
             'bagian' => DokumenService::BAGIAN_SPO,
@@ -96,11 +393,11 @@ class DokumenCetakController extends Controller
         return 'SPO ' . $no . Str::limit(preg_replace('/[^\pL\pN ,.-]+/u', ' ', $dok->dok_judul), 90, '') . '.' . $ext;
     }
 
-    public function pdf(int $dokId): Response
+    private function spoPdf(int $dokId): Response
     {
         $d = $this->dataSpo($dokId);
         $pdf = Pdf::loadView('pages.dokumen.cetak.spo-pdf', $d + ['kolomKop' => self::KOLOM_KOP, 'kolomIsi' => self::KOLOM_ISI])
-            ->setPaper('A4', 'portrait');
+            ->setPaper('A4', 'portrait')->setOption('chroot', $this->chroot());
         // "Halaman n / N" di sel kop — counter(pages) CSS tidak didukung DomPDF, jadi digambar
         // lewat kanvas sesudah render. Koordinat (pt) dari marjin SPO + lebar kolom kop.
         $dompdf = $pdf->getDomPDF();
@@ -122,7 +419,7 @@ class DokumenCetakController extends Controller
         ]);
     }
 
-    public function docx(int $dokId): Response
+    private function spoDocx(int $dokId): Response
     {
         $d = $this->dataSpo($dokId);
         $dok = $d['dok'];
@@ -175,11 +472,17 @@ class DokumenCetakController extends Controller
                 $c = $t->addCell($cm(self::KOLOM_KOP[2] + self::KOLOM_KOP[3]), ['gridSpan' => 2, 'valign' => 'top']);
                 $c->addText('Ditetapkan,', [], $tengah);
                 $c->addText($d['penetap']['jabatan'] ?? 'Direktur', [], $tengah);
-                $c->addTextBreak(3);
-                $c->addText($d['penetap']['nama'] ?? '', $tebal, $tengah);
+                $ttdImg = $d['ttd'] ? DokumenService::gambarTtd($d['ttd']['kode'] ?? null) : null;
+                if ($ttdImg) {
+                    $c->addImage($ttdImg, ['height' => Converter::cmToPoint(1.2), 'alignment' => 'center']);
+                } else {
+                    $c->addTextBreak(3);
+                }
+                $c->addText(htmlspecialchars($d['ttd']['nama'] ?? ($d['penetap']['nama'] ?? '')), $tebal, $tengah);
             }
             $header->addTextBreak(1, ['size' => 4]);
         }
+        $this->labelDraf($section, $d['ttd'], $dok->status);
         // header bertipe 'first' → PhpWord menulis <w:titlePg/> (kop halaman pertama berbeda)
         $word->getSettings()->setUpdateFields(true);
 
@@ -332,6 +635,18 @@ class DokumenCetakController extends Controller
         }
 
         return $keluar !== '' ? $keluar : '<p>' . e(strip_tags($html)) . '</p>';
+    }
+
+    /** Gambar blok (format umum) untuk pratinjau penyusun — src base64 "impor:…"/"unggah:…", dibatasi akar yang diizinkan. */
+    public function gambar(int $dokId, string $src): Response
+    {
+        $data = DokumenService::baca($dokId);
+        abort_unless($data, 404);
+        $this->periksaAkses($data[0]);
+        $path = TataNaskah::pathGambar(base64_decode($src, true) ?: null);
+        abort_unless($path, 404);
+
+        return response()->file($path, ['Cache-Control' => 'private, max-age=3600']);
     }
 
     public function berkas(int $dokId, string $berkasId): Response

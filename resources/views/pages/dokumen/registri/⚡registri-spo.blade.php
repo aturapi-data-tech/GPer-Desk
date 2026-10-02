@@ -47,6 +47,12 @@ new class extends Component {
     public function simpan(bool $diam = false): void
     {
         abort_unless(DokumenService::bolehUbah(), 403);
+        try {
+            DokumenService::pastikanTidakTerkunci((int) $this->dokId);
+        } catch (\DomainException $e) {
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+            return;
+        }
         if (! $this->dokId) return;
         $isi = [];
         foreach (array_keys(DokumenService::BAGIAN_SPO) as $k) {
@@ -117,8 +123,8 @@ new class extends Component {
                     <x-secondary-button type="button" wire:click="tutup">Tutup</x-secondary-button>
                     <x-secondary-button type="button"
                         x-on:click="window.dispatchEvent(new Event('dokumen-spo.flush')); $nextTick(() => $wire.simpanLaluCetak('docx'))">Simpan &amp; DOCX</x-secondary-button>
-                    <x-cetak-button type="button"
-                        x-on:click="window.dispatchEvent(new Event('dokumen-spo.flush')); $nextTick(() => $wire.simpanLaluCetak('pdf'))">Simpan &amp; PDF</x-cetak-button>
+                    <x-cetak-button type="button" label="Simpan & PDF"
+                        x-on:click="window.dispatchEvent(new Event('dokumen-spo.flush')); $nextTick(() => $wire.simpanLaluCetak('pdf'))" />
                     @if (DokumenService::bolehUbah())
                         <x-primary-button type="button"
                             x-on:click="window.dispatchEvent(new Event('dokumen-spo.flush')); $nextTick(() => $wire.simpan())">Simpan</x-primary-button>

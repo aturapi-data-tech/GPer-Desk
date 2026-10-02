@@ -101,6 +101,8 @@ class ImporDokumenAkreditasi extends Command
         $this->info("Tahap 1: {$baru} baru, {$diperbarui} diperbarui, {$dilewati} sudah ada (dilewati).");
 
         $this->pasangIsiSpo(dirname($path) . '/isi_spo.json', $petaId);
+        $this->pasangIsiNaskah(dirname($path) . '/isi_naskah.json', $petaId);
+        $this->pasangIsiUmum(dirname($path) . '/umum', $petaId);
 
         if (! $this->option('tanpa-induk')) {
             $this->tautkanInduk($manifest['dokumen'], $petaId, $jenis);
@@ -140,6 +142,72 @@ class ImporDokumenAkreditasi extends Command
             $dipasang++;
         }
         $this->info("Isi SPO terstruktur dipasang ke {$dipasang} dokumen.");
+    }
+
+    /**
+     * Isi naskah terstruktur hasil konversi PDF (perkakas/ekspor_isi_naskah.py) → DOK_JSON.isi.naskah,
+     * format menurut App\Support\TataNaskah. Ditandai perlu dicek; isi yang sudah ada tidak ditimpa.
+     */
+    private function pasangIsiNaskah(string $berkas, array $petaId): void
+    {
+        if (! is_file($berkas)) {
+            return;
+        }
+        $semua = json_decode(file_get_contents($berkas), true) ?: [];
+        $dipasang = 0;
+        foreach ($semua as $kunci => $naskah) {
+            $id = $petaId[$kunci] ?? null;
+            if (! $id) {
+                continue;
+            }
+            [, $json] = DokumenService::baca($id);
+            if (filled($json['isi']['naskah'] ?? null)) {
+                continue;
+            }
+            $sumber = $naskah['_sumber'] ?? null;
+            unset($naskah['_sumber']);
+            DokumenService::catat($id, 'SUSUN', 'isi naskah dikonversi otomatis dari PDF — perlu dicek', function ($json) use ($naskah, $sumber) {
+                $json['isi']['naskah'] = $naskah;
+                $json['isiSumber'] = $sumber;
+                return $json;
+            });
+            $dipasang++;
+        }
+        $this->info("Isi naskah (JSON tata naskah) dipasang ke {$dipasang} dokumen — ditandai perlu dicek.");
+    }
+
+    /**
+     * Isi format "umum" (perkakas/ekspor_isi_umum.py: blok html/gambar, OCR pindaian) → isi.naskah untuk
+     * dokumen yang belum punya isi terstruktur. Satu berkas JSON per dokumen di folder umum/.
+     */
+    private function pasangIsiUmum(string $folder, array $petaId): void
+    {
+        if (! is_dir($folder)) {
+            return;
+        }
+        $dipasang = 0;
+        foreach (glob($folder . '/*.json') as $berkas) {
+            $isi = json_decode(file_get_contents($berkas), true);
+            $id = $petaId[$isi['kunci'] ?? ''] ?? null;
+            if (! $id) {
+                continue;
+            }
+            [, $json] = DokumenService::baca($id);
+            if (filled($json['isi']['naskah'] ?? null) || filled($json['isi']['spo'] ?? null)) {
+                continue;
+            }
+            $naskah = $isi['naskah'];
+            $sumber = $naskah['_sumber'] ?? null;
+            unset($naskah['_sumber']);
+            $naskah['kaki'] ??= ['tempat' => 'Tulungagung', 'tanggal' => '', 'jabatan' => '', 'nama' => ''];
+            DokumenService::catat($id, 'SUSUN', 'isi dikonversi otomatis (' . ($sumber['jenis'] ?? 'pdf') . ') — perlu dicek', function ($json) use ($naskah, $sumber) {
+                $json['isi']['naskah'] = $naskah;
+                $json['isiSumber'] = $sumber;
+                return $json;
+            });
+            $dipasang++;
+        }
+        $this->info("Isi dokumen umum (blok teks/gambar, OCR) dipasang ke {$dipasang} dokumen — ditandai perlu dicek.");
     }
 
     private function tautkanInduk(array $dokumen, array $petaId, $jenis): void

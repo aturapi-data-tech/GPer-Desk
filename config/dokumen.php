@@ -34,6 +34,10 @@ return [
         'wadir_umum' => ['jabatan' => 'Wakil Direktur Umum',      'nama' => 'Sulistyo Budi, SE'],
     ],
 
+    // Peran yang boleh menandatangani dokumen (spesimen TTD milik sendiri) & membuka kunci.
+    'peran_ttd' => ['direktur', 'manager', 'admin'],
+    'peran_buka_kunci' => ['admin'],
+
     // Bab akreditasi (Std KEMKES 2024) — urutan sesuai instrumen.
     'pokja' => [
         'TKRS'  => 'Tata Kelola Rumah Sakit',

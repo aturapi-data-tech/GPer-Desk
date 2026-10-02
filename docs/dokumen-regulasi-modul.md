@@ -55,6 +55,39 @@ Kolom header untuk cari/filter (`DOK_NO`, `JENIS_KODE`, `STATUS`, `POKJA`, …) 
 JSON ditulis **tanpa** `JSON_UNESCAPED_UNICODE` (escape `\uXXXX`, murni ASCII); kolom VARCHAR2 diberi padanan
 Latin-1 (`DokumenService::latin1`) dan judul asli disimpan di `judulAsli`.
 
+## Isi naskah sebagai JSON (Pedoman Tata Naskah BAB III)
+
+Naskah regulasi tidak lagi bergantung pada berkas: isinya disimpan sebagai JSON di `DOK_JSON.isi.naskah`
+(SPO di `isi.spo`) dan PDF/DOCX **dibangkitkan dari JSON**. Definisi format & kerangka baku: `app/Support/TataNaskah.php`.
+
+| Format | Jenis | Bagian (bentuk baku) |
+|---|---|---|
+| `peraturan` | PERDIR | judulJenis, tentang, pembuat, menimbang[] (a.), mengingat[] (1.), menetapkan, pasal[] — hal. 11–13 |
+| `keputusan` | SK, KEB | sama; badan diktum[] KESATU, KEDUA … (Pasal juga diterima — banyak SK RS ber-Pasal) — hal. 29–31 |
+| `bab` | PED, PAN, PROG | judul, sistematika (7 sistematika baku hal. 15–22), bab[{judul, isi, sub[{judul, isi}]}], kepustakaan, kaki; LAMPIRAN diambil dari induk Peraturan/Keputusan |
+| `edaran` | SE | judulJenis, tentang, yth[], isi, kaki, tembusan[] — hal. 27–29 |
+| `spo` | SPO | isi.spo — hal. 24–26 |
+
+```json
+{"format": "keputusan", "judulJenis": "KEPUTUSAN DIREKTUR RSUI MADINAH", "tentang": "PENETAPAN …",
+ "pembuat": "DIREKTUR RSUI MADINAH TULUNGAGUNG,", "menimbang": ["bahwa …;"], "mengingat": ["Undang-Undang …;"],
+ "menetapkan": "", "pasal": [{"isi": "<p>…</p>"}],
+ "kaki": {"tempat": "Tulungagung", "tanggal": "2026-01-05", "jabatan": "DIREKTUR RSUI MADINAH,", "nama": "dr. Fauziyah, M. Kes", "nik": ""},
+ "tembusan": []}
+```
+
+- **Penyusun naskah** (`⚡registri-naskah`): panel kiri bagian baku, kanan penyunting; satu TinyMCE bergantian,
+  daftar (Menimbang/Mengingat/Tembusan/Yth) satu butir per baris, tambah/geser/hapus Pasal/Diktum/BAB/Sub,
+  "Terapkan kerangka" mengisi BAB dari sistematika baku. Dokumen baru langsung berisi bagian wajib (`TataNaskah::kosong`).
+- **Cetak naskah**: kop resmi sebagai latar satu halaman penuh (gambar sama dengan `perkakas/pasang_kop.py`,
+  `public/images/kop/`), marjin aturan rumah atas 7,37 · kiri/kanan 2,5 · bawah 2,0 cm; BAB baru di halaman baru,
+  nomor halaman untuk naskah berbab; kaki tidak tertinggal sendirian (page-break-inside avoid / keepNext).
+- **Konversi dokumen lama** (`perkakas/ekspor_isi_naskah.py`): teks PDF → JSON per bentuk baku (judul bagian
+  diseragamkan, butir dipecah menurut urutan a.→b. / 1.→2., daftar isi dibuang, BAB I berulang = reset).
+  Hanya hasil berstruktur lengkap yang dipasang; semuanya `isiSumber.perluDicek = true` sampai disimpan dari penyusun.
+  Alasan penolakan: `perkakas/.registri/isi_naskah_laporan.json` (pindaian, lampiran yang salah golongan, dll.).
+  Bila nama penanda tangan di PDF berupa gambar, diisi Direktur yang tercatat dan ditandai `kaki.namaDiisiBawaan`.
+
 ## Cetak SPO
 
 Format hal. 25–26 & aturan rumah: A4, Arial (Liberation Sans di `resources/fonts`, metrik sama), marjin SPO
@@ -70,8 +103,9 @@ Format hal. 25–26 & aturan rumah: A4, Arial (Liberation Sans di `resources/fon
 
 ## Impor dokumen akreditasi
 
-1. Di folder akreditasi: `python3 perkakas/ekspor_registri_dokumen.py` (manifest) dan
-   `python3 perkakas/ekspor_isi_spo.py` (isi terstruktur SPO buatan sendiri dari .docx).
+1. Di folder akreditasi: `python3 perkakas/ekspor_registri_dokumen.py` (manifest),
+   `python3 perkakas/ekspor_isi_spo.py` (isi SPO buatan sendiri dari .docx) dan
+   `python3 perkakas/ekspor_isi_naskah.py` (isi Peraturan/Keputusan/Pedoman/Panduan/Program dari PDF).
 2. Di GPer: `php artisan dokumen:impor-akreditasi` — aman diulang (kunci `nama|ukuran`), `--perbarui` menimpa data
    hasil impor (isi, status manual & riwayat dipertahankan).
 3. Induk ditautkan otomatis dan **ditandai dugaan**: (a) nomor naskah yang dirujuk isi dokumen, (b) satu-satunya

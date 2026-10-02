@@ -53,6 +53,12 @@ new class extends Component {
     public function openEdit(int $dokId): void { $this->dispatch('dokumen.registri.openEdit', dokId: $dokId); }
     public function openDetail(int $dokId): void { $this->dispatch('dokumen.registri.openDetail', dokId: $dokId); }
     public function openSpo(int $dokId): void { $this->dispatch('dokumen.registri.openSpo', dokId: $dokId); }
+
+    /** Buka penyusun sesuai format naskah: SPO → penyusun SPO, lainnya → penyusun naskah (JSON tata naskah). */
+    public function openSusun(int $dokId): void
+    {
+        $this->dispatch(DokumenService::penyusun($dokId), dokId: $dokId);
+    }
     public function requestDelete(int $dokId): void { $this->dispatch('dokumen.registri.requestDelete', dokId: $dokId); }
 
     public function toggle(int $dokId): void
@@ -262,6 +268,7 @@ new class extends Component {
             <livewire:pages::dokumen.registri.registri-actions wire:key="dokumen-registri-actions" />
             <livewire:pages::dokumen.registri.registri-detail wire:key="dokumen-registri-detail" />
             <livewire:pages::dokumen.registri.registri-spo wire:key="dokumen-registri-spo" />
+            <livewire:pages::dokumen.registri.registri-naskah wire:key="dokumen-registri-naskah" />
         </div>
     </div>
 </div>
