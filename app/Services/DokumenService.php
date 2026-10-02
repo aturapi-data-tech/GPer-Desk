@@ -152,6 +152,32 @@ class DokumenService
             // em dash, ≤, kutip lengkung akan rusak jadi "¿". Escape \uXXXX membuat JSON murni ASCII.
             'dok_json' => json_encode($json, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
         ]);
+        self::indeksAkreditasi($dokId, $json['akreditasi'] ?? []);
+    }
+
+    /** Salin DOK_JSON.akreditasi ke DOK_AKREDITASI (pohon akreditasi registri). Dilewati bila tabel belum dibuat. */
+    public static function indeksAkreditasi(int $dokId, array $akreditasi): void
+    {
+        static $ada = null;
+        $ada ??= \Illuminate\Support\Facades\Schema::hasTable('dok_akreditasi');
+        if (! $ada) {
+            return;
+        }
+        DB::table('dok_akreditasi')->where('dok_id', $dokId)->delete();
+        $baris = [];
+        foreach ($akreditasi as $a) {
+            $bab = trim((string) ($a['bab'] ?? ''));
+            $std = trim((string) ($a['standar'] ?? ''));
+            $ep = trim((string) ($a['ep'] ?? ''));
+            if ($bab === '' || $std === '' || $ep === '') {
+                continue;
+            }
+            $baris["{$bab}|{$std}|{$ep}"] = ['dok_id' => $dokId, 'bab' => substr($bab, 0, 10), 'standar' => substr($std, 0, 20),
+                'ep' => substr($ep, 0, 10), 'elemen' => substr((string) ($a['elemen'] ?? ''), 0, 20) ?: null];
+        }
+        if ($baris) {
+            DB::table('dok_akreditasi')->insert(array_values($baris));
+        }
     }
 
     /** Tambah satu catatan riwayat tanpa mengubah header. */

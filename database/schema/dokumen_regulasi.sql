@@ -170,3 +170,25 @@ INSERT INTO DOK_UNIT (KODE, NAMA) VALUES ('pnas',  'Program Nasional');
 INSERT INTO DOK_PENOMORAN (SERI, UNIT_KODE, TAHUN, NO_TERAKHIR) VALUES ('SPO', '-', 0, 383);
 
 COMMIT;
+
+-- 7) INDEKS AKREDITASI — salinan DOK_JSON.akreditasi yang bisa di-query (pohon Pokja → Standar → EP di registri).
+--    Diisi ulang otomatis tiap DOK_JSON ditulis (DokumenService::tulisJson); bangun penuh: php artisan dokumen:indeks-akreditasi
+CREATE TABLE DOK_AKREDITASI (
+    DOK_ID   NUMBER(12)   NOT NULL,
+    BAB      VARCHAR2(10) NOT NULL,                -- pokja: MRMIK, PMKP …
+    STANDAR  VARCHAR2(20) NOT NULL,                -- MRMIK 12, SKP 6.1 …
+    EP       VARCHAR2(10) NOT NULL,                -- a, b, c …
+    ELEMEN   VARCHAR2(20),                         -- R, D, O, W, S
+    CONSTRAINT dok_akr_pk  PRIMARY KEY (DOK_ID, BAB, STANDAR, EP),
+    CONSTRAINT dok_akr_fk  FOREIGN KEY (DOK_ID) REFERENCES DOK_DOKUMEN (DOK_ID) ON DELETE CASCADE
+);
+CREATE INDEX dok_akr_ep_idx ON DOK_AKREDITASI (BAB, STANDAR, EP);
+
+-- Judul standar & EP dari nama folder akreditasi ("MRMIK 12 - Evaluasi Pengkajian RM", "EP b (D) - …"); EP '-' = judul standar.
+CREATE TABLE DOK_AKR_JUDUL (
+    STANDAR  VARCHAR2(20)  NOT NULL,
+    EP       VARCHAR2(10)  NOT NULL,
+    JUDUL    VARCHAR2(400) NOT NULL,
+    ELEMEN   VARCHAR2(20),
+    CONSTRAINT dok_akr_judul_pk PRIMARY KEY (STANDAR, EP)
+);

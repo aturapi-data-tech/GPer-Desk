@@ -21,10 +21,12 @@ new class extends Component {
     public string $filterTingkat = '';
     public string $filterStatus = '';
     public string $filterPokja = '';
-    public string $tampilan = 'daftar';   // daftar | pohon
+    public string $tampilan = 'akreditasi';   // akreditasi (Pokja → Standar → EP → dokumen) | daftar | pohon (induk)
     public int $itemsPerPage = 15;
     /** @var int[] simpul pohon yang dibuka */
     public array $terbuka = [];
+    /** @var string[] simpul pohon akreditasi yang dibuka: "MRMIK", "MRMIK|MRMIK 12", "MRMIK|MRMIK 12|b", "_tanpa" */
+    public array $terbukaAkr = [];
 
     public function mount(): void
     {
@@ -40,7 +42,7 @@ new class extends Component {
 
     public function resetFilters(): void
     {
-        $this->reset(['searchKeyword', 'filterJenis', 'filterTingkat', 'filterStatus', 'filterPokja', 'terbuka']);
+        $this->reset(['searchKeyword', 'filterJenis', 'filterTingkat', 'filterStatus', 'filterPokja', 'terbuka', 'terbukaAkr']);
         $this->itemsPerPage = 15;
         $this->resetPage();
     }
@@ -68,10 +70,17 @@ new class extends Component {
             : [...$this->terbuka, $dokId];
     }
 
+    public function toggleAkr(string $kunci): void
+    {
+        $this->terbukaAkr = in_array($kunci, $this->terbukaAkr, true)
+            ? array_values(array_filter($this->terbukaAkr, fn ($k) => $k !== $kunci && ! str_starts_with($k, $kunci . '|')))
+            : [...$this->terbukaAkr, $kunci];
+    }
+
     #[On('dokumen.registri.saved')]
     public function refreshAfterSaved(): void
     {
-        unset($this->rows, $this->stats);
+        unset($this->rows, $this->stats, $this->pohonAkr);
     }
 
     private function dasar()
@@ -129,6 +138,82 @@ new class extends Component {
 
         return $this->dasar()->whereIn('dk.induk_id', $this->terbuka)
             ->orderBy('dj.tingkat')->orderBy('dk.dok_judul')->get()->groupBy('induk_id')->all();
+    }
+
+    /**
+     * Pohon akreditasi: Pokja → Standar → EP → dokumen (indeks DOK_AKREDITASI). Hanya cabang yang dibuka yang
+     * dimuat; saringan berlaku pada hitungan dan dokumen. Pencarian dengan ≤ 150 hasil membuka cabangnya otomatis.
+     */
+    #[Computed]
+    public function pohonAkr(): array
+    {
+        if ($this->tampilan !== 'akreditasi') {
+            return [];
+        }
+        // saringan pokja di pohon ini = cabang pokja itu saja (bukan semua EP milik dokumen yang kebetulan juga di pokja itu)
+        $pokjaSaja = fn ($q) => $this->filterPokja !== '' ? $q->where('ak.bab', $this->filterPokja) : $q;
+        $ak = fn () => $pokjaSaja($this->saring(DB::table('dok_akreditasi as ak')
+            ->join('dok_dokumen as dk', 'dk.dok_id', '=', 'ak.dok_id')
+            ->join('dok_jenis as dj', 'dj.kode', '=', 'dk.jenis_kode')));
+
+        $buka = $this->terbukaAkr;
+        $otomatis = false;
+        if (trim($this->searchKeyword) !== '') {
+            $hasil = $ak()->selectRaw('COUNT(DISTINCT ak.dok_id) n')->value('n');
+            if ($hasil > 0 && $hasil <= 150) {
+                $otomatis = true;
+                foreach ($ak()->select('ak.bab', 'ak.standar', 'ak.ep')->distinct()->get() as $r) {
+                    array_push($buka, $r->bab, "{$r->bab}|{$r->standar}", "{$r->bab}|{$r->standar}|{$r->ep}");
+                }
+                $buka = array_values(array_unique($buka));
+            }
+        }
+
+        $pokja = $ak()->selectRaw('ak.bab, COUNT(DISTINCT ak.dok_id) n')->groupBy('ak.bab')->pluck('n', 'bab')->all();
+        $babBuka = array_values(array_filter($buka, fn ($k) => ! str_contains($k, '|') && $k !== '_tanpa'));
+        $standar = $babBuka ? $ak()->whereIn('ak.bab', $babBuka)
+            ->selectRaw('ak.bab, ak.standar, COUNT(DISTINCT ak.dok_id) n')->groupBy('ak.bab', 'ak.standar')->get()
+            ->groupBy('bab')->map(fn ($g) => $g->sortBy('standar', SORT_NATURAL)->values())->all() : [];
+        $judulStandar = $standar ? DB::table('dok_akr_judul')->where('ep', '-')
+            ->whereIn('standar', collect($standar)->flatten()->pluck('standar')->all())->pluck('judul', 'standar')->all() : [];
+
+        $stdBuka = array_values(array_filter($buka, fn ($k) => substr_count($k, '|') === 1));
+        $ep = [];
+        if ($stdBuka) {
+            $q = $ak()->leftJoin('dok_akr_judul as aj', fn ($j) => $j->on('aj.standar', '=', 'ak.standar')->on('aj.ep', '=', 'ak.ep'))
+                ->where(function ($w) use ($stdBuka) {
+                    foreach ($stdBuka as $k) {
+                        [$b, $st] = explode('|', $k);
+                        $w->orWhere(fn ($x) => $x->where('ak.bab', $b)->where('ak.standar', $st));
+                    }
+                })
+                ->selectRaw('ak.bab, ak.standar, ak.ep, MAX(aj.judul) judul, MAX(aj.elemen) elemen, COUNT(DISTINCT ak.dok_id) n')
+                ->groupBy('ak.bab', 'ak.standar', 'ak.ep')->orderBy('ak.ep');
+            $ep = $q->get()->groupBy(fn ($r) => "{$r->bab}|{$r->standar}")->all();
+        }
+
+        $epBuka = array_values(array_filter($buka, fn ($k) => substr_count($k, '|') === 2));
+        $dokumen = [];
+        if ($epBuka) {
+            $q = $this->saring($this->dasar())->join('dok_akreditasi as ak', 'ak.dok_id', '=', 'dk.dok_id')
+                ->addSelect('ak.bab', 'ak.standar', 'ak.ep')
+                ->where(function ($w) use ($epBuka) {
+                    foreach ($epBuka as $k) {
+                        [$b, $st, $e] = explode('|', $k);
+                        $w->orWhere(fn ($x) => $x->where('ak.bab', $b)->where('ak.standar', $st)->where('ak.ep', $e));
+                    }
+                })
+                ->orderBy('dj.tingkat')->orderBy('dj.urut')->orderByRaw('dk.dok_no_urut NULLS LAST')->orderBy('dk.dok_judul');
+            $dokumen = $q->get()->groupBy(fn ($r) => "{$r->bab}|{$r->standar}|{$r->ep}")->all();
+        }
+
+        // dokumen tanpa data akreditasi (tidak masuk cabang mana pun)
+        $tanpaQ = fn () => $this->saring($this->dasar())->whereNotExists(fn ($x) => $x->from('dok_akreditasi as ak')
+            ->whereColumn('ak.dok_id', 'dk.dok_id'));
+        $tanpaN = (int) $tanpaQ()->count();
+        $tanpa = in_array('_tanpa', $buka, true) ? $tanpaQ()->orderBy('dj.tingkat')->orderBy('dk.dok_judul')->get() : collect();
+
+        return compact('pokja', 'standar', 'judulStandar', 'ep', 'dokumen', 'buka', 'otomatis', 'tanpaN', 'tanpa');
     }
 
     #[Computed]
@@ -199,7 +284,7 @@ new class extends Component {
 
                     <div class="flex items-center justify-end gap-2">
                         <div class="inline-flex p-1 border rounded-xl border-hairline bg-canvas dark:bg-gray-800 dark:border-gray-700">
-                            @foreach (['daftar' => 'Daftar', 'pohon' => 'Pohon'] as $k => $nm)
+                            @foreach (['akreditasi' => 'Akreditasi', 'pohon' => 'Induk', 'daftar' => 'Daftar'] as $k => $nm)
                                 <button type="button" wire:click="$set('tampilan','{{ $k }}')"
                                     class="px-3 py-1.5 text-sm rounded-lg {{ $tampilan === $k ? 'bg-brand-green text-white' : 'text-muted dark:text-gray-300' }}">{{ $nm }}</button>
                             @endforeach
@@ -221,6 +306,11 @@ new class extends Component {
                     <p class="mt-2 text-xs text-muted dark:text-gray-400">
                         Pohon dimulai dari dokumen tanpa induk (tingkat tertinggi). Klik ▸ untuk membuka turunannya.
                         Dengan saringan aktif, hasil ditampilkan rata.
+                    </p>
+                @elseif ($tampilan === 'akreditasi')
+                    <p class="mt-2 text-xs text-muted dark:text-gray-400">
+                        Pokja → Standar → EP → dokumen (regulasi dulu, lalu SPO, formulir, bukti). Satu dokumen bisa muncul di beberapa EP.
+                        Klik ▸ untuk membuka; saringan berlaku pada angka dan isi cabang.
                     </p>
                 @endif
             </div>
@@ -245,6 +335,9 @@ new class extends Component {
                                 $turunan = $this->turunan;
                                 $bolehUbah = DokumenService::bolehUbah();
                             @endphp
+                            @if ($tampilan === 'akreditasi')
+                                @include('pages.dokumen.registri.pohon-akreditasi', ['p' => $this->pohonAkr, 'bolehUbah' => $bolehUbah])
+                            @else
                             @forelse ($this->rows as $row)
                                 @include('pages.dokumen.registri.baris-registri', [
                                     'row' => $row, 'kedalaman' => 0, 'turunan' => $turunan,
@@ -257,12 +350,15 @@ new class extends Component {
                                     </td>
                                 </tr>
                             @endforelse
+                            @endif
                         </tbody>
                     </table>
                 </div>
+                @if ($tampilan !== 'akreditasi')
                 <div class="sticky bottom-0 z-10 px-4 py-3 border-t bg-canvas border-hairline rounded-b-2xl dark:bg-gray-900 dark:border-gray-700">
                     {{ $this->rows->links() }}
                 </div>
+                @endif
             </div>
 
             <livewire:pages::dokumen.registri.registri-actions wire:key="dokumen-registri-actions" />

@@ -135,3 +135,11 @@ kapital, tebal, rata, ukuran huruf, jarak, nomor butir (a., 1), …) dan tanda b
 Pilihan rumah (disetujui user 2 Okt 2026): teks 12 pt, tabel 10 pt, spasi 1,15 (Pedoman hanya memberi rentang 10–12 pt
 dan 1–1,5). Naskah versi 1 tetap dicetak dengan jalur lama sampai dikonversi
 (`perkakas/naskah_v2.py` → `.registri/isi_naskah_v2.json`, 82 naskah arahan).
+
+## Pohon akreditasi di registri (2 Okt 2026)
+
+Tampilan bawaan registri: Pokja → Standar → EP → dokumen (regulasi dulu, lalu SPO, formulir, bukti). Sumbernya tabel indeks
+`DOK_AKREDITASI` (salinan `DOK_JSON.akreditasi`, diperbarui otomatis di `DokumenService::tulisJson`) dan `DOK_AKR_JUDUL`
+(judul standar/EP dari nama folder arsip). Bangun/ulang: `php artisan dokumen:indeks-akreditasi` (membuat tabel bila belum ada).
+Cabang dimuat saat dibuka; pencarian dengan ≤ 150 hasil membuka cabangnya otomatis. Tampilan "Induk" (pohon induk dokumen)
+dan "Daftar" tetap tersedia.

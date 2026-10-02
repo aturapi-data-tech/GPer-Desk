@@ -5,7 +5,7 @@
     $buka = in_array((int) $row->dok_id, $terbuka, true);
     $pokja = array_filter(explode(',', (string) $row->pokja));
 @endphp
-<tr wire:key="dok-{{ $row->dok_id }}-{{ $kedalaman }}" class="{{ $kedalaman ? 'bg-surface-soft/40 dark:bg-gray-800/30' : '' }}">
+<tr wire:key="dok-{{ $row->dok_id }}-{{ $kedalaman }}-{{ $kunci ?? '' }}" class="{{ $kedalaman ? 'bg-surface-soft/40 dark:bg-gray-800/30' : '' }}">
     <td>
         <div class="flex flex-col gap-1">
             <x-badge variant="{{ ['purple','brand','info','success','warning','gray'][(int) $row->tingkat] ?? 'gray' }}">
