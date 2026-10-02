@@ -44,14 +44,14 @@ new class extends Component {
         $this->dispatch('dokumen-spo.reload');
     }
 
-    public function simpan(bool $diam = false): void
+    public function simpan(bool $diam = false): bool
     {
         abort_unless(DokumenService::bolehUbah(), 403);
         try {
             DokumenService::pastikanTidakTerkunci((int) $this->dokId);
         } catch (\DomainException $e) {
             $this->dispatch('toast', type: 'error', message: $e->getMessage());
-            return;
+            return false;
         }
         if (! $this->dokId) return;
         $isi = [];
@@ -68,12 +68,16 @@ new class extends Component {
             $this->dispatch('toast', type: 'success', message: 'Isi SPO tersimpan.');
         }
         $this->dispatch('dokumen.registri.saved');
+
+        return true;
     }
 
     public function simpanLaluCetak(string $format): void
     {
-        $this->simpan(true);
-        $url = $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', $this->dokId);
+        if (! $this->simpan(true)) {
+            return;                                  // gagal simpan (mis. terkunci) → jangan cetak isi lama
+        }
+        $url = $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', ['dokId' => $this->dokId, 'unduh' => 1]);
         $this->dispatch('dokumen-spo.buka-url', url: $url);
     }
 
@@ -84,7 +88,7 @@ new class extends Component {
 };
 ?>
 
-<div x-data x-on:dokumen-spo.buka-url.window="window.open($event.detail.url, '_blank')">
+<div x-data x-on:dokumen-spo.buka-url.window="window.location.href = $event.detail.url">
     <x-modal name="dokumen-registri-spo" size="full" height="full">
         <div class="flex flex-col h-full">
             <div class="px-6 py-4 border-b bg-surface-soft border-hairline dark:bg-gray-900 dark:border-gray-700">

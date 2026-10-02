@@ -188,17 +188,17 @@ new class extends Component {
         $this->dispatch('toast', type: 'info', message: 'Kerangka BAB diganti sesuai sistematika baku.');
     }
 
-    public function simpan(bool $diam = false): void
+    public function simpan(bool $diam = false): bool
     {
         if (\App\Support\Naskah\Kerangka::versi2($this->n)) {
-            return;
+            return false;
         }
         abort_unless(DokumenService::bolehUbah(), 403);
         try {
             DokumenService::pastikanTidakTerkunci((int) $this->dokId);
         } catch (\DomainException $e) {
             $this->dispatch('toast', type: 'error', message: $e->getMessage());
-            return;
+            return false;
         }
         $this->simpanBagian();
         $naskah = $this->n;
@@ -213,12 +213,16 @@ new class extends Component {
         $this->perluDicek = false;
         if (! $diam) $this->dispatch('toast', type: 'success', message: 'Naskah tersimpan.');
         $this->dispatch('dokumen.registri.saved');
+
+        return true;
     }
 
     public function simpanLaluCetak(string $format): void
     {
-        $this->simpan(true);
-        $this->dispatch('dokumen-naskah.buka-url', url: $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', $this->dokId));
+        if (! $this->simpan(true)) {
+            return;                                  // gagal simpan (mis. terkunci) → jangan cetak isi lama
+        }
+        $this->dispatch('dokumen-naskah.buka-url', url: $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', ['dokId' => $this->dokId, 'unduh' => 1]));
     }
 
     public function tutup(): void
@@ -270,7 +274,7 @@ new class extends Component {
 };
 ?>
 
-<div x-data x-on:dokumen-naskah.buka-url.window="window.open($event.detail.url, '_blank')">
+<div x-data x-on:dokumen-naskah.buka-url.window="window.location.href = $event.detail.url">
     <x-modal name="dokumen-registri-naskah" size="full" height="full">
         @php
             $f = $n['format'] ?? '';

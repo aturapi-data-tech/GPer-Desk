@@ -93,6 +93,12 @@ class DokumenCetakController extends Controller
         ];
     }
 
+    /** PDF dibuka di tab (inline) atau diunduh (?unduh=1 — tombol "Simpan & PDF" di penyusun). */
+    private static function sajian(): string
+    {
+        return request()->boolean('unduh') ? 'attachment' : 'inline';
+    }
+
     /** Tanda air: belum ditandatangani = DRAF; dokumen usang tetap ditandai. */
     public static function tandaAir(string $status, ?array $ttd): ?string
     {
@@ -128,7 +134,7 @@ class DokumenCetakController extends Controller
 
             return response($isi, 200, [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
+                'Content-Disposition' => self::sajian() . '; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
             ]);
         }
         $pdf = Pdf::loadView('pages.dokumen.cetak.naskah-pdf', $d)->setPaper('A4', 'portrait')
@@ -147,7 +153,7 @@ class DokumenCetakController extends Controller
 
         return response($dompdf->output(), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
+            'Content-Disposition' => self::sajian() . '; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
         ]);
     }
 
@@ -457,7 +463,7 @@ class DokumenCetakController extends Controller
 
         return response($dompdf->output(), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $this->namaBerkas($d['dok'], 'pdf') . '"',
+            'Content-Disposition' => self::sajian() . '; filename="' . $this->namaBerkas($d['dok'], 'pdf') . '"',
         ]);
     }
 
