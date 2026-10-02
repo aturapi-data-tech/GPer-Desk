@@ -26,6 +26,7 @@ class Gaya
             'ukuran' => (float) ($g['ukuran'] ?? self::ukuran()),
             'sebelum' => (float) ($g['sebelum'] ?? 0),
             'sesudah' => (float) ($g['sesudah'] ?? 0),
+            'ikut' => (bool) ($g['ikut'] ?? false),
         ];
     }
 

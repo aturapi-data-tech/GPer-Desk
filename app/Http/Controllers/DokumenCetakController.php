@@ -81,14 +81,14 @@ class DokumenCetakController extends Controller
         abort_unless($data, 404);
         [$row, $json] = $data;
         $n = $json['isi']['naskah'] ?? [];
-        abort_if(blank($n['format'] ?? null), 404, 'Isi naskah belum disusun.');
+        abort_if(blank($n['format'] ?? null) && ! Naskah\Kerangka::versi2($n), 404, 'Isi naskah belum disusun.');
         $this->periksaAkses($row);
         $row->dok_judul = DokumenService::judul($row, $json);
         $tgl = ($n['kaki']['tanggal'] ?? '') ?: $row->tgl_terbit;
 
         return [
             'dok' => $row, 'n' => $n, 'ttd' => $json['ttd'] ?? null,
-            'lampiran' => $n['format'] === 'bab' ? TataNaskah::lampiranDari($row->induk_id ? (int) $row->induk_id : null) : null,
+            'lampiran' => ($n['format'] ?? null) === 'bab' ? TataNaskah::lampiranDari($row->induk_id ? (int) $row->induk_id : null) : null,
             'tanggal' => DokumenService::tanggalIndonesia($tgl),
         ];
     }

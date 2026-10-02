@@ -34,6 +34,9 @@ return [
     // Lebar kolom konsiderans/diktum (cm): label · titik dua · nomor. Sisa lebar untuk isi.
     'kolom' => ['label' => 2.8, 'titik' => 0.5, 'nomor' => 0.7],
 
+    // Kepala lampiran (LAMPIRAN/NOMOR/TENTANG) di kanan atas mulai dari sini (cm dari marjin kiri) — hal. 13 7(a).
+    'lampiran_kiri' => 6.5,
+
     // Kaki penanda tangan mulai dari sini (cm dari marjin kiri).
     'kaki_kiri' => 8.5,
     // Ruang tanda tangan bila belum ada spesimen (baris).
@@ -49,7 +52,8 @@ return [
 
     /*
      * Gaya per peran. Kunci yang dikenal: rata (tengah|kiri|kanan|rata), kapital, tebal, miring,
-     * ukuran (pt; bawaan huruf.ukuran), sebelum, sesudah (baris), sumber (halaman Pedoman).
+     * ukuran (pt; bawaan huruf.ukuran), sebelum, sesudah (baris), ikut (judul tidak boleh terpisah dari isi
+     * sesudahnya di pergantian halaman), sumber (halaman Pedoman).
      */
     'gaya' => [
         // ── Kepala naskah arahan (Peraturan hal. 11, Keputusan hal. 30–31) ──
@@ -62,10 +66,13 @@ return [
         // ── Konsiderans & diktum ──
         'label'       => ['rata' => 'kiri', 'sumber' => 'hal. 11–12: Menimbang/Mengingat/Menetapkan huruf awal kapital + titik dua'],
         'konsiderans' => ['rata' => 'rata', 'sumber' => 'hal. 11 a.(1), 12'],
-        'memutuskan'  => ['rata' => 'tengah', 'kapital' => true, 'tebal' => true, 'sebelum' => 1, 'sesudah' => 1, 'sumber' => 'hal. 12 b.(1)'],
+        'memutuskan'  => ['ikut' => true, 'rata' => 'tengah', 'kapital' => true, 'tebal' => true, 'sebelum' => 1, 'sesudah' => 1, 'sumber' => 'hal. 12 b.(1)'],
         'menetapkan'  => ['rata' => 'kiri', 'kapital' => true, 'tebal' => true, 'sumber' => 'hal. 12 b.(3)'],
         'diktum'      => ['rata' => 'kiri', 'kapital' => true, 'sumber' => 'hal. 30 butir 4: KESATU, KEDUA … huruf kapital'],
-        'pasal'       => ['rata' => 'tengah', 'sebelum' => 1, 'sumber' => 'hal. 12 butir 3'],
+        'pasal'       => ['ikut' => true, 'rata' => 'tengah', 'sebelum' => 1, 'sumber' => 'hal. 12 butir 3'],
+        // BAB pengelompok pasal: hal. 11 "tata naskah peraturan sesuai ketentuan peraturan perundangan" → UU 12/2011
+        'bab_nomor'   => ['ikut' => true, 'rata' => 'tengah', 'kapital' => true, 'sebelum' => 1.5, 'sumber' => 'hal. 11 → UU 12/2011 lamp. II'],
+        'bab_judul'   => ['ikut' => true, 'rata' => 'tengah', 'kapital' => true, 'sumber' => 'hal. 11 → UU 12/2011 lamp. II'],
 
         // ── Batang tubuh (semua jenis) ──
         'isi'         => ['rata' => 'rata', 'sesudah' => 0.25, 'sumber' => 'hal. 67 butir 3: rata kiri kanan'],

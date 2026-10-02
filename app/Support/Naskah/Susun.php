@@ -73,7 +73,12 @@ class Susun
         $u[] = ['lajur', [['Menetapkan', 'label', ':', null, self::tanpaTitik($menetapkan) . '.', 'menetapkan', null]]];
 
         if (! empty($n['pasal'])) {
+            $bab = 0;
             foreach ($n['pasal'] as $i => $p) {
+                if (filled($p['bab'] ?? '')) {                  // BAB pengelompok pasal, nomor dihitung
+                    $u[] = ['teks', 'bab_nomor', 'BAB ' . TataNaskah::romawi(++$bab)];
+                    $u[] = ['teks', 'bab_judul', $p['bab']];
+                }
                 $u[] = ['teks', 'pasal', 'Pasal ' . ($i + 1)];
                 $u[] = ['isi', self::simpul($p['isi'] ?? [], true), 'pasal', Gaya::mulai('pasal')];
             }
@@ -89,7 +94,9 @@ class Susun
             }
         }
 
-        $u[] = self::kakiArahan($n['kaki'] ?? [], $ttd);
+        $kaki = ($n['kaki'] ?? []) + ['tanggal' => ''];
+        $kaki['tanggal'] = $kaki['tanggal'] ?: $dok->tgl_terbit;    // sama dengan jalur v1: cadangan tanggal terbit registri
+        $u[] = self::kakiArahan($kaki, $ttd);
         if (! empty($n['tembusan'])) {
             $u[] = ['tembusan', array_values($n['tembusan'])];
         }
@@ -106,7 +113,7 @@ class Susun
                 $u[] = ['jarak', max(0, Gaya::c('jarak_judul_isi', 2) - 1)];
             }
             $u[] = ['isi', self::simpul($l['isi'] ?? []), 'bab', Gaya::mulai('bab')];
-            $u[] = self::kakiArahan($n['kaki'] ?? [], $ttd);   // hal. 13 7(b): halaman terakhir ditandatangani
+            $u[] = self::kakiArahan($kaki, $ttd);   // hal. 13 7(b): halaman terakhir ditandatangani
         }
 
         return $u;
@@ -268,5 +275,22 @@ class Susun
         }
 
         return $hasil;
+    }
+
+    /** Simpul → potongan per baris: tiap paragraf/tabel satu potong, tiap butir daftar teratas satu potong (nomor tetap urut). */
+    public static function pecah(array $simpul): array
+    {
+        $potong = [];
+        foreach ($simpul as $s) {
+            if ($s[0] === 'daftar') {
+                foreach ($s[2] as $i => $b) {
+                    $potong[] = [['daftar', $s[1], [$b], $i]];
+                }
+            } else {
+                $potong[] = [$s];
+            }
+        }
+
+        return $potong;
     }
 }

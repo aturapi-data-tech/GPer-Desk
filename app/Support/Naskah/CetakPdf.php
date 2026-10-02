@@ -20,7 +20,45 @@ class CetakPdf
     public function html(string $judul, array $unsur): string
     {
         $isi = '';
-        foreach ($unsur as $u) {
+        for ($i = 0, $n = count($unsur); $i < $n; $i++) {
+            $u = $unsur[$i];
+            // aturan rumah: tanda tangan tidak boleh sendirian di halaman terakhir — potongan isi terakhir,
+            // kaki dan tembusan dibungkus satu blok yang tidak boleh terbelah
+            if (($unsur[$i + 1][0] ?? null) === 'kaki' && in_array($u[0], ['lajur', 'isi'], true)) {
+                [$utama, $akhir] = $u[0] === 'lajur' ? $this->lajur($u[1], true) : $this->isiPisah($u[1], $u[3]);
+                $isi .= $utama . '<div style="page-break-inside:avoid">' . $akhir . $this->kakiTembusan($unsur, $i) . '</div>';
+
+                continue;
+            }
+            // judul ber-"ikut" (Pasal, BAB, MEMUTUSKAN) dibungkus bersama potongan pertama isi sesudahnya
+            if ($u[0] === 'teks' && Gaya::peran($u[1])['ikut']) {
+                $kepala = '';
+                while ($i < $n && $unsur[$i][0] === 'teks' && Gaya::peran($unsur[$i][1])['ikut']) {
+                    $kepala .= $this->unsur($unsur[$i++]);
+                }
+                $berikut = $unsur[$i] ?? null;
+                if ($berikut && $berikut[0] === 'isi') {
+                    $potong = $this->isiPisah($berikut[1], $berikut[3], false);
+                    $akhirKaki = ($unsur[$i + 1][0] ?? null) === 'kaki';
+                    if ($akhirKaki && count($potong) <= 1) {        // judul + isi satu potong + kaki: satu blok
+                        $isi .= '<div style="page-break-inside:avoid">' . $kepala . ($potong[0] ?? '') . $this->kakiTembusan($unsur, $i) . '</div>';
+                    } else {
+                        $isi .= '<div style="page-break-inside:avoid">' . $kepala . array_shift($potong) . '</div>';
+                        $akhir = $akhirKaki ? array_pop($potong) : null;
+                        $isi .= implode('', $potong);
+                        if ($akhirKaki) {
+                            $isi .= '<div style="page-break-inside:avoid">' . $akhir . $this->kakiTembusan($unsur, $i) . '</div>';
+                        }
+                    }
+                } elseif ($berikut && $berikut[0] === 'lajur' && ($unsur[$i + 1][0] ?? null) !== 'kaki') {
+                    $isi .= '<div style="page-break-inside:avoid">' . $kepala . $this->lajur($berikut[1]) . '</div>';
+                } else {
+                    $isi .= $kepala;
+                    $i--;                                   // unsur berikut diproses putaran biasa
+                }
+
+                continue;
+            }
             $isi .= $this->unsur($u);
         }
         $kop = $this->kop && is_file($this->kop) ? '<img class="kop" src="' . e($this->kop) . '">' : '';
@@ -28,6 +66,18 @@ class CetakPdf
 
         return '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>' . e($judul) . '</title>'
             . '<style>' . $this->css() . '</style></head><body>' . $kop . $tanda . $isi . '</body></html>';
+    }
+
+    /** Kaki (unsur $i+1) dan tembusan sesudahnya bila ada; $i dimajukan melewati keduanya. */
+    private function kakiTembusan(array $unsur, int &$i): string
+    {
+        $h = $this->kaki($unsur[$i + 1][1], $unsur[$i + 1][2]);
+        $i++;
+        if (($unsur[$i + 1][0] ?? null) === 'tembusan') {
+            $h .= $this->tembusan($unsur[++$i][1]);
+        }
+
+        return $h;
     }
 
     private function css(): string
@@ -70,7 +120,7 @@ class CetakPdf
             'teks' => $this->p($u[1], $u[2]),
             'jarak' => '<div style="height:' . Gaya::barisPt($u[1]) . 'pt"></div>',
             'lajur' => $this->lajur($u[1]),
-            'isi' => $this->simpul($u[1], $u[3], $this->lebar),
+            'isi' => implode('', $this->isiPisah($u[1], $u[3], false)),
             'identitas' => $this->identitas($u[1], $u[2]),
             'rincian' => $this->rincian($u[1]),
             'kaki' => $this->kaki($u[1], $u[2]),
@@ -81,32 +131,66 @@ class CetakPdf
         };
     }
 
-    private function lajur(array $baris): string
+    /** $pisah: kembalikan [tabel tanpa baris terakhir, tabel baris terakhir] untuk diikat dengan kaki. */
+    private function lajur(array $baris, bool $pisah = false): string|array
     {
         $k = Gaya::c('kolom');
         $sisa = $this->lebar - $k['label'] - $k['titik'];
-        $h = '<table style="width:' . $this->lebar . 'cm">';
+        $baris = $this->barisLajur($baris, $k, $sisa);
+        $tabel = fn ($b) => $b ? '<table style="width:' . $this->lebar . 'cm">' . implode('', $b) . '</table>' : '';
+        if (! $pisah) {
+            return $tabel($baris);
+        }
+        $akhir = array_pop($baris);
+
+        return [$tabel($baris), $tabel([$akhir])];
+    }
+
+    private function barisLajur(array $baris, array $k, float $sisa): array
+    {
+        $h = [];
         foreach ($baris as [$label, $labelPeran, $titik, $nomor, $isi, $isiPeran, $konteks]) {
             if ($label === '' && $isi === '' && ! $nomor) {        // jeda antar-konsiderans: setengah baris
-                $h .= '<tr><td colspan="4" style="height:' . Gaya::barisPt(0.5) . 'pt"></td></tr>';
+                $h[] = '<tr><td colspan="4" style="height:' . Gaya::barisPt(0.5) . 'pt"></td></tr>';
 
                 continue;
             }
-            $h .= '<tr><td style="width:' . $k['label'] . 'cm">' . $this->p($labelPeran, $label) . '</td>'
+            if (is_array($isi)) {
+                // isi panjang dipecah per paragraf/butir jadi baris sendiri: DomPDF tidak bisa membelah satu baris
+                // tabel yang lebih tinggi dari halaman (meninggalkan halaman kosong)
+                foreach (Susun::pecah($isi) ?: [[]] as $j => $potong) {
+                    $h[] = '<tr><td style="width:' . $k['label'] . 'cm">' . ($j ? '' : $this->p($labelPeran, $label)) . '</td>'
+                        . '<td style="width:' . $k['titik'] . 'cm">' . ($j ? '' : $this->p('label', $titik)) . '</td>'
+                        . '<td colspan="2" style="width:' . $sisa . 'cm">' . $this->simpul($potong, Gaya::mulai($konteks ?? 'diktum'), $sisa) . '</td></tr>';
+                }
+
+                continue;
+            }
+            $r = '<tr><td style="width:' . $k['label'] . 'cm">' . $this->p($labelPeran, $label) . '</td>'
                 . '<td style="width:' . $k['titik'] . 'cm">' . $this->p('label', $titik) . '</td>';
-            $sel = is_array($isi)
-                ? $this->simpul($isi, Gaya::mulai($konteks ?? 'diktum'), $sisa)
-                : $this->p($isiPeran, $isi);
+            $sel = $this->p($isiPeran, $isi);
             if ($nomor !== null) {
-                $h .= '<td style="width:' . $k['nomor'] . 'cm">' . $this->p('label', $nomor) . '</td>'
+                $r .= '<td style="width:' . $k['nomor'] . 'cm">' . $this->p('label', $nomor) . '</td>'
                     . '<td style="width:' . ($sisa - $k['nomor']) . 'cm">' . $sel . '</td>';
             } else {
-                $h .= '<td colspan="2" style="width:' . $sisa . 'cm">' . $sel . '</td>';
+                $r .= '<td colspan="2" style="width:' . $sisa . 'cm">' . $sel . '</td>';
             }
-            $h .= '</tr>';
+            $h[] = $r . '</tr>';
         }
 
-        return $h . '</table>';
+        return $h;
+    }
+
+    /** Isi batang tubuh per potongan; $pisah → [semua kecuali potongan terakhir, potongan terakhir]. */
+    private function isiPisah(array $simpul, int $tingkat, bool $pisah = true): array
+    {
+        $html = array_map(fn ($p) => $this->simpul($p, $tingkat, $this->lebar), Susun::pecah($simpul));
+        if (! $pisah) {
+            return $html;
+        }
+        $akhir = (string) array_pop($html);
+
+        return [implode('', $html), $akhir];
     }
 
     /** Simpul isi: paragraf, butir bertingkat (kolom nomor menggantung), tabel. */
@@ -120,7 +204,7 @@ class CetakPdf
             } elseif ($s[0] === 'daftar') {
                 $h .= '<table style="width:' . $lebar . 'cm">';
                 foreach ($s[2] as $i => [$teks, $anak]) {
-                    $nomor = $s[1] ? Gaya::nomor($tingkat, $i) : '•';
+                    $nomor = $s[1] ? Gaya::nomor($tingkat, $i + ($s[3] ?? 0)) : '•';
                     $h .= '<tr><td style="width:' . $ind . 'cm">' . $this->p('isi', $nomor) . '</td><td style="width:' . ($lebar - $ind) . 'cm">'
                         . ($teks !== '' ? $this->p('isi', $teks) : '')
                         . ($anak ? $this->simpul($anak, $tingkat + 1, $lebar - $ind) : '') . '</td></tr>';
@@ -199,7 +283,7 @@ class CetakPdf
 
     private function lampiran(array $baris): string
     {
-        $kiri = Gaya::c('kaki_kiri');
+        $kiri = Gaya::c('lampiran_kiri', 6.5);
         $h = '<table style="margin:0 0 ' . Gaya::barisPt(1) . 'pt ' . $kiri . 'cm;width:' . ($this->lebar - $kiri) . 'cm">';
         foreach ($baris as [$k, $v]) {
             $h .= '<tr><td style="width:2.4cm">' . $this->p('lampiran', $k) . '</td><td style="width:0.4cm">' . $this->p('lampiran', ':') . '</td>'

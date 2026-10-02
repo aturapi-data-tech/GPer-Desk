@@ -36,6 +36,12 @@ new class extends Component {
         $data = DokumenService::baca($dokId);
         if (! $data) return;
         [$row, $json] = $data;
+        // Naskah versi 2 (isi teks, App\Support\Naskah) belum punya penyusun — jangan dibuka di penyusun HTML ini,
+        // karena menyimpannya akan merusak isi v2. Cetak PDF/DOCX tetap tersedia.
+        if (\App\Support\Naskah\Kerangka::versi2($json['isi']['naskah'] ?? [])) {
+            $this->dispatch('toast', type: 'info', message: 'Naskah ini sudah format baru (tata naskah v2). Penyusunnya menyusul — sementara gunakan Cetak PDF/DOCX.');
+            return;
+        }
         $this->dokId = $dokId;
         $this->jenis = (string) $row->jenis_kode;
         $this->nomor = (string) ($row->dok_no ?? '');
@@ -183,6 +189,9 @@ new class extends Component {
 
     public function simpan(bool $diam = false): void
     {
+        if (\App\Support\Naskah\Kerangka::versi2($this->n)) {
+            return;
+        }
         abort_unless(DokumenService::bolehUbah(), 403);
         try {
             DokumenService::pastikanTidakTerkunci((int) $this->dokId);

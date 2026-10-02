@@ -6,6 +6,7 @@ use App\Services\DokumenService;
 use PhpOffice\PhpWord\ComplexType\TblWidth;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Shared\Converter;
+use PhpOffice\PhpWord\Style\Tab;
 
 /**
  * Unsur (Susun) → DOCX PhpWord. Pasangan CetakPdf: gaya, jarak dan penomoran dari Gaya yang sama.
@@ -15,6 +16,7 @@ use PhpOffice\PhpWord\Shared\Converter;
 class CetakDocx
 {
     private PhpWord $word;
+    private bool $ikat = false;      // paragraf berikutnya diberi keepNext (diikat ke kaki)
     private $section;
     private float $lebar;
     private const TANPA_GARIS = ['borderSize' => 0, 'borderColor' => 'FFFFFF', 'cellMargin' => 0, 'layout' => 'fixed'];
@@ -48,7 +50,32 @@ class CetakDocx
             $header->addText($this->tanda, ['color' => 'B0B0B0', 'bold' => true, 'size' => 10], ['alignment' => 'left']);
         }
 
-        foreach ($unsur as $u) {
+        for ($i = 0, $n = count($unsur); $i < $n; $i++) {
+            $u = $unsur[$i];
+            // aturan rumah: tanda tangan tidak boleh sendirian di halaman terakhir — potongan isi terakhir diberi
+            // keepNext sampai kaki & tembusan
+            if (($unsur[$i + 1][0] ?? null) === 'kaki' && $u[0] === 'isi') {
+                $potong = Susun::pecah($u[1]);
+                $akhir = array_pop($potong);
+                $this->simpul($this->section, array_merge(...($potong ?: [[]])), $u[3], 0.0);
+                $this->ikat = true;
+                $this->simpul($this->section, $akhir ?? [], $u[3], 0.0);
+                $this->ikat = false;
+
+                continue;
+            }
+            if (($unsur[$i + 1][0] ?? null) === 'kaki' && $u[0] === 'lajur') {
+                $this->lajur($u[1], true);
+
+                continue;
+            }
+            if ($u[0] === 'tembusan') {
+                $this->ikat = true;
+                $this->unsur($u);
+                $this->ikat = false;
+
+                continue;
+            }
             $this->unsur($u);
         }
 
@@ -89,6 +116,10 @@ class CetakDocx
             'spaceBefore' => self::twipPt(Gaya::barisPt($g['sebelum'], $g['ukuran'])),
             'spaceAfter' => self::twipPt(Gaya::barisPt($g['sesudah'], $g['ukuran'])),
             'lineHeight' => Gaya::spasi()];
+        if ($this->ikat || $g['ikut']) {
+            $par['keepNext'] = true;
+            $par['keepLines'] = true;
+        }
 
         return [$huruf, $tambahan + $par];
     }
@@ -124,36 +155,63 @@ class CetakDocx
         };
     }
 
-    private function lajur(array $baris): void
+    /**
+     * Konsiderans/diktum sebagai ALINEA bertab dengan indentasi gantung, bukan tabel: keep-with-next tidak menembus
+     * tabel di LibreOffice, dan alinea lebih wajar disunting di Word. "Label<tab>:<tab>[nomor<tab>]teks".
+     * $ikatAkhir: potongan terakhir baris terakhir diberi keepNext ke kaki.
+     */
+    private function lajur(array $baris, bool $ikatAkhir = false): void
     {
         $k = Gaya::c('kolom');
-        $sisa = $this->lebar - $k['label'] - $k['titik'];
-        $t = $this->section->addTable(self::TANPA_GARIS + ['width' => self::cm($this->lebar), 'unit' => 'dxa']);
-        foreach ($baris as [$label, $labelPeran, $titik, $nomor, $isi, $isiPeran, $konteks]) {
+        $x1 = $k['label'];
+        $x2 = $x1 + $k['titik'];
+        $x3 = $x2 + $k['nomor'];
+        $terakhir = array_key_last($baris);
+        foreach ($baris as $bi => [$label, $labelPeran, $titik, $nomor, $isi, $isiPeran, $konteks]) {
+            $akhirBaris = $ikatAkhir && $bi === $terakhir;
             if ($label === '' && $isi === '' && ! $nomor) {        // jeda antar-konsiderans: setengah baris
-                $t->addRow(self::twipPt(Gaya::barisPt(0.5)), ['exactHeight' => true]);
-                $t->addCell(self::cm($this->lebar), ['gridSpan' => 4])->addText('', ['size' => 1], ['spacing' => 20, 'spacingLineRule' => 'exact']);
+                $this->jarak($this->section, 0.5);
 
                 continue;
             }
-            $t->addRow();
-            $this->p($t->addCell(self::cm($k['label'])), $labelPeran, $label);
-            $this->p($t->addCell(self::cm($k['titik'])), 'label', $titik);
+            $kiri = $nomor !== null ? $x3 : $x2;
+            $tab = [new Tab('left', self::cm($x1)), new Tab('left', self::cm($x2))];
             if ($nomor !== null) {
-                $this->p($t->addCell(self::cm($k['nomor'])), 'label', $nomor);
-                $sel = $t->addCell(self::cm($sisa - $k['nomor']));
-            } else {
-                $sel = $t->addCell(self::cm($sisa), ['gridSpan' => 2]);
+                $tab[] = new Tab('left', self::cm($x3));
             }
-            if (is_array($isi)) {
-                $this->simpul($sel, $isi, Gaya::mulai($konteks ?? 'diktum'), 0.0);
-                if (! $isi) {
-                    $sel->addText('');
+            $kepala = function (?string $teks, string $peranTeks, bool $ikat) use ($label, $labelPeran, $titik, $nomor, $kiri, $tab) {
+                $this->ikat = $ikat;
+                [, $par] = $this->gaya($peranTeks, ['indentation' => ['left' => self::cm($kiri), 'hanging' => self::cm($kiri)], 'tabs' => $tab]);
+                $run = $this->section->addTextRun($par);
+                [$hl] = $this->gaya($labelPeran);
+                $run->addText(htmlspecialchars(Gaya::teks($labelPeran, $label)), $hl);
+                [$hb] = $this->gaya('label');
+                $run->addText("\t" . htmlspecialchars($titik) . ($nomor !== null ? "\t" . htmlspecialchars($nomor) : '') . ($teks !== null ? "\t" : ''), $hb);
+                if ($teks !== null) {
+                    [$ht] = $this->gaya($peranTeks);
+                    $run->addText(htmlspecialchars(Gaya::teks($peranTeks, $teks)), $ht);
                 }
+            };
+            if (! is_array($isi)) {
+                $kepala($isi, $isiPeran, $akhirBaris);
+
+                continue;
+            }
+            $potong = Susun::pecah($isi);
+            $n = count($potong);
+            $mulai = 0;
+            if (($potong[0][0][0] ?? null) === 'p') {               // paragraf pertama sebaris dengan label
+                $kepala($potong[0][0][1], 'isi', $akhirBaris && $n === 1);
+                $mulai = 1;
             } else {
-                $this->p($sel, $isiPeran, $isi);
+                $kepala(null, 'isi', $akhirBaris && $n === 0);
+            }
+            for ($j = $mulai; $j < $n; $j++) {
+                $this->ikat = $akhirBaris && $j === $n - 1;
+                $this->simpul($this->section, $potong[$j], Gaya::mulai($konteks ?? 'diktum'), $x2);
             }
         }
+        $this->ikat = false;
     }
 
     /** $kiri = indentasi awal (cm) di dalam wadah. */
@@ -165,7 +223,7 @@ class CetakDocx
                 $this->p($wadah, 'isi', $s[1], $kiri > 0 ? ['indentation' => ['left' => self::cm($kiri)]] : []);
             } elseif ($s[0] === 'daftar') {
                 foreach ($s[2] as $i => [$teks, $anak]) {
-                    $nomor = $s[1] ? Gaya::nomor($tingkat, $i) : '•';
+                    $nomor = $s[1] ? Gaya::nomor($tingkat, $i + ($s[3] ?? 0)) : '•';
                     [$h, $p] = $this->gaya('isi', ['indentation' => ['left' => self::cm($kiri + $ind), 'hanging' => self::cm($ind)]]);
                     $wadah->addText(htmlspecialchars($nomor) . "\t" . htmlspecialchars($teks), $h, $p);
                     if ($anak) {
@@ -261,7 +319,7 @@ class CetakDocx
 
     private function lampiran(array $baris): void
     {
-        $kiri = Gaya::c('kaki_kiri');
+        $kiri = Gaya::c('lampiran_kiri', 6.5);
         $t = $this->section->addTable(self::TANPA_GARIS + ['indent' => new TblWidth(self::cm($kiri))]);
         foreach ($baris as [$k, $v]) {
             $t->addRow();

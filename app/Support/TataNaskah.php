@@ -229,9 +229,10 @@ class TataNaskah
         $n = $json['isi']['naskah'] ?? [];
 
         return [
-            'nama' => $n['judulJenis'] ?? (self::JUDUL_JENIS[$row->jenis_kode] ?? ''),
+            'nama' => mb_strtoupper($n['judulJenis'] ?? (self::JUDUL_JENIS[$row->jenis_kode] ?? '')),
             'nomor' => $row->dok_no ?: '…',
-            'tentang' => $n['tentang'] ?? mb_strtoupper(DokumenService::judul($row, $json)),
+            // v1 menyimpan "tentang", v2 menyimpan "judul" (teks biasa, dikapitalkan saat cetak)
+            'tentang' => mb_strtoupper($n['tentang'] ?? $n['judul'] ?? DokumenService::judul($row, $json)),
         ];
     }
 }

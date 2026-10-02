@@ -11,6 +11,9 @@ namespace App\Support\Naskah;
  *   "teks"                                  paragraf
  *   {"daftar": [butir…], "urut": true}      butir bertingkat; butir = "teks" | {"teks": "…", "anak": [simpul…]}
  *   {"tabel": {"kepala": […], "baris": [[…]]}}
+ *
+ * Pasal boleh membuka BAB: {"bab": "Ketentuan Umum", "isi": […]} — nomor BAB I, II … dihitung saat cetak.
+ * Lampiran: "lampiran": [{"judul": "…", "isi": [simpul…]}] — kepala LAMPIRAN/NOMOR/TENTANG dibuat otomatis.
  */
 class Kerangka
 {
