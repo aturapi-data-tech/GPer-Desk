@@ -53,7 +53,7 @@ new class extends Component {
             $this->dispatch('toast', type: 'error', message: $e->getMessage());
             return false;
         }
-        if (! $this->dokId) return;
+        if (! $this->dokId) return false;
         $isi = [];
         foreach (array_keys(DokumenService::BAGIAN_SPO) as $k) {
             $isi[$k] = trim($this->{$k});
