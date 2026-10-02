@@ -135,6 +135,7 @@ new class extends Component {
         }
         $this->pilih = 'kepala';
         $this->muatBagian();
+        $this->dispatch('toast', type: 'info', message: 'Bagian dihapus — tekan Simpan untuk menyimpan perubahan.');
     }
 
     public function geser(int $arah): void

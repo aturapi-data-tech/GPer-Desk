@@ -18,6 +18,10 @@
     // disabled selama proses; justru mencegah aksi ganda dari baris lain.
     $loadingTarget = $wireTarget ?? \Illuminate\Support\Str::before($action, '(');
 
+    // action="hapus" (tanpa kurung) → "hapus()": `$wire.hapus;` hanya merujuk fungsi, tidak memanggilnya —
+    // konfirmasi tampak jalan tapi aksi tidak pernah terkirim ke server.
+    $panggil = str_contains($action, '(') ? $action : $action . '()';
+
     // class trigger button — disesuaikan dengan komponen button standar
     $base = 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors duration-150';
 
@@ -58,7 +62,7 @@
     },
     confirm() {
         this.close();
-        $wire.{{ $action }};
+        $wire.{{ $panggil }};
     }
 }" x-on:keydown.escape.window="if (show) close()" class="inline-block">
     {{-- Trigger — disabled + spinner selama aksi $wire berjalan, supaya proses
