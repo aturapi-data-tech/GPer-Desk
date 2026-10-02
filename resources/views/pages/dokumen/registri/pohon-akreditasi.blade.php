@@ -34,7 +34,8 @@
                     @php $kEp = "{$kStd}|{$e->ep}"; @endphp
                     <tr wire:key="akr-{{ $kEp }}">
                         <td colspan="7" class="!py-1.5">
-                            <button type="button" wire:click="toggleAkr('{{ $kEp }}')" class="flex items-center w-full gap-2 text-left" style="padding-left: 3rem">
+                          <div class="flex items-center gap-2">
+                            <button type="button" wire:click="toggleAkr('{{ $kEp }}')" class="flex items-center flex-1 min-w-0 gap-2 text-left" style="padding-left: 3rem">
                                 <span class="w-5 text-brand-green dark:text-brand-lime">{{ $panah($kEp) }}</span>
                                 <span class="text-sm font-medium text-ink dark:text-gray-200">EP {{ $e->ep }}</span>
                                 @if ($e->elemen)
@@ -43,6 +44,11 @@
                                 <span class="text-sm text-muted dark:text-gray-300">{{ $e->judul }}</span>
                                 <span class="ml-auto text-xs text-muted dark:text-gray-400">{{ $e->n }} dokumen</span>
                             </button>
+                            @if ($bolehUbah)
+                                <button type="button" wire:click="tambahDiEp('{{ $kEp }}')" title="Tambah dokumen ke EP ini"
+                                    class="px-2 py-0.5 text-xs font-medium rounded-lg text-brand-green bg-brand-green/10 hover:bg-brand-green hover:text-white dark:text-brand-lime dark:bg-brand-lime/10">+ Dokumen</button>
+                            @endif
+                          </div>
                         </td>
                     </tr>
                     @if (in_array($kEp, $buka, true))

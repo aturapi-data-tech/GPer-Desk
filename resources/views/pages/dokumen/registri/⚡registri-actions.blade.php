@@ -24,6 +24,8 @@ new class extends Component {
     public array $berkas = [];
     public $unggahan = null;
     public string $ringkasan = '';
+    /** "MRMIK 12 · EP b — Pengkajian RM Berkala" bila dibuka dari tombol + di pohon akreditasi */
+    public string $konteksEp = '';
 
     public function mount(): void
     {
@@ -42,11 +44,12 @@ new class extends Component {
         $this->berkas = [];
         $this->unggahan = null;
         $this->ringkasan = '';
+        $this->konteksEp = '';
         $this->resetValidation();
     }
 
     #[On('dokumen.registri.openCreate')]
-    public function openCreate(?int $indukId = null): void
+    public function openCreate(?int $indukId = null, ?array $ep = null): void
     {
         abort_unless(DokumenService::bolehUbah(), 403);
         $this->resetForm();
@@ -55,8 +58,40 @@ new class extends Component {
         if ($indukId) {
             $this->form['induk_id'] = $indukId;
         }
+        if ($ep) {
+            $this->isiDariEp($ep);
+        }
         $this->incrementVersion('modal');
         $this->dispatch('open-modal', name: 'dokumen-registri-actions');
+    }
+
+    /**
+     * Tambah dari pohon akreditasi: kaitan EP terisi; jenis bawaan menurut elemen (R → Keputusan Direktur, selain itu
+     * Bukti); induk diusulkan bila di EP itu — atau di standar yang sama — hanya ada satu regulasi (bisa dihapus).
+     */
+    private function isiDariEp(array $ep): void
+    {
+        $unsur = array_map('trim', explode(',', (string) ($ep['elemen'] ?? '')));
+        $elemen = in_array('R', $unsur, true) ? 'R' : (in_array('D', $unsur, true) ? 'D' : ($unsur[0] ?? ''));
+        $this->akreditasi = [['bab' => $ep['bab'], 'standar' => $ep['standar'], 'ep' => $ep['ep'],
+            'elemen' => in_array($elemen, ['R', 'D', 'O', 'W', 'S'], true) ? $elemen : '']];
+        $this->form['jenis_kode'] = $elemen === 'R' ? 'SK' : 'BUKTI';
+        $this->konteksEp = "{$ep['standar']} · EP {$ep['ep']}" . (filled($ep['judul'] ?? '') ? ' — ' . $ep['judul'] : '');
+
+        if ($elemen !== 'R') {
+            $regulasi = fn ($q) => $q->join('dok_dokumen as dk', 'dk.dok_id', '=', 'ak.dok_id')
+                ->join('dok_jenis as dj', 'dj.kode', '=', 'dk.jenis_kode')
+                ->where('dj.tingkat', '<=', 3)->where('dk.status', 'BERLAKU')
+                // catatan kembar bernomor sama (salinan folder kerja & SIDOKAR) dihitung satu dokumen
+                ->selectRaw('MIN(dk.dok_id) dok_id')->groupByRaw('COALESCE(dk.dok_no, TO_CHAR(dk.dok_id))')->pluck('dok_id');
+            $diEp = $regulasi(DB::table('dok_akreditasi as ak')->where('ak.bab', $ep['bab'])
+                ->where('ak.standar', $ep['standar'])->where('ak.ep', $ep['ep']));
+            $calon = $diEp->count() ? $diEp : $regulasi(DB::table('dok_akreditasi as ak')
+                ->where('ak.bab', $ep['bab'])->where('ak.standar', $ep['standar']));
+            if ($calon->count() === 1) {
+                $this->form['induk_id'] = (int) $calon->first();
+            }
+        }
     }
 
     #[On('dokumen.registri.openEdit')]
@@ -244,6 +279,11 @@ new class extends Component {
 
             {{-- BODY --}}
             <div class="flex-1 px-4 py-4 space-y-4 bg-surface-soft dark:bg-gray-950/20">
+                @if ($konteksEp !== '')
+                    <div class="px-4 py-3 text-sm border rounded-xl border-brand-green/30 bg-brand-green/5 text-ink dark:text-gray-200 dark:border-brand-lime/30 dark:bg-brand-lime/5">
+                        Ditambahkan ke <b>{{ $konteksEp }}</b> — kaitan akreditasi sudah terisi{{ $form['induk_id'] ? ', induk diusulkan dari regulasi EP ini' : '' }}. Periksa jenis, judul, lalu unggah berkasnya.
+                    </div>
+                @endif
                 <x-border-form title="Identitas Dokumen">
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
                         <div>

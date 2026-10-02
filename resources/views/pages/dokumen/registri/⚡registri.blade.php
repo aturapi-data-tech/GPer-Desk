@@ -70,6 +70,18 @@ new class extends Component {
             : [...$this->terbuka, $dokId];
     }
 
+    /** + Dokumen pada baris EP pohon akreditasi → form tambah dengan kaitan EP terisi. */
+    public function tambahDiEp(string $kunci): void
+    {
+        [$bab, $standar, $ep] = explode('|', $kunci) + [null, null, null];
+        if (! $ep) {
+            return;
+        }
+        $j = DB::table('dok_akr_judul')->where('standar', $standar)->where('ep', $ep)->first();
+        $this->dispatch('dokumen.registri.openCreate', indukId: null,
+            ep: ['bab' => $bab, 'standar' => $standar, 'ep' => $ep, 'elemen' => $j->elemen ?? '', 'judul' => $j->judul ?? '']);
+    }
+
     public function toggleAkr(string $kunci): void
     {
         $this->terbukaAkr = in_array($kunci, $this->terbukaAkr, true)
