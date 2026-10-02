@@ -130,7 +130,7 @@ new class extends Component {
 ?>
 
 <div>
-    <x-modal name="dokumen-registri-detail" size="4xl" height="full">
+    <x-modal name="dokumen-registri-detail" size="full" height="full">
         @if ($dok)
             <div class="flex flex-col h-full">
                 <div class="px-6 py-5 border-b bg-surface-soft border-hairline dark:bg-gray-900 dark:border-gray-700">
