@@ -3,6 +3,7 @@
 -- Dasar: Peraturan Direktur PT Al-Ikhlas Madinah Nomor 104/SK/PT-AIM/10/2025 tentang Struktur Organisasi
 --        dan Tata Kerja RS Islam Madinah (Pasal 6, 16–32 + bagan Lampiran I) — akreditasi TKRS 3 EP a.
 --        Pejabat: Keputusan Direktur PT Al-Ikhlas Madinah 096/SK/PT-AIM/7/2026 (sebagian; sisanya diisi di aplikasi).
+-- ORG_JENIS: master jenis unit (Direksi, Bagian, Instalasi, …) — RS lain cukup mengisi jenisnya sendiri.
 -- ORG_UNIT: satu baris per satuan organisasi; INDUK_ID = atasan langsung (bagan Lampiran I).
 --   Instalasi pelayanan (IGD … Jiwa) berinduk Bagian Pelayanan Medis; koordinasi keperawatan (Pasal 20) tidak dimodelkan.
 --   Unit Penyelenggara SIMRS tidak tercantum di Perdir 104/2025 (dasar: Pedoman Pengorganisasian Unit SIMRS, DRAF).
@@ -16,22 +17,38 @@ EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;
 BEGIN EXECUTE IMMEDIATE 'DROP TABLE ORG_UNIT CASCADE CONSTRAINTS PURGE';
 EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;
 /
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE ORG_JENIS CASCADE CONSTRAINTS PURGE';
+EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;
+/
 BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE ORG_UNIT_SEQ';
 EXCEPTION WHEN OTHERS THEN IF SQLCODE != -2289 THEN RAISE; END IF; END;
 /
+
+CREATE TABLE ORG_JENIS (
+    KODE         VARCHAR2(12)  NOT NULL,        -- dibentuk dari nama saat dibuat, tidak berubah
+    NAMA         VARCHAR2(60)  NOT NULL,
+    URUT         NUMBER(3)     DEFAULT 0 NOT NULL,   -- urutan tingkat (juga menentukan warna badge)
+    CONSTRAINT org_jenis_pk PRIMARY KEY (KODE)
+);
+INSERT INTO ORG_JENIS (KODE, NAMA, URUT) VALUES ('DIREKSI', 'Direksi', 1);
+INSERT INTO ORG_JENIS (KODE, NAMA, URUT) VALUES ('BAGIAN', 'Bagian', 2);
+INSERT INTO ORG_JENIS (KODE, NAMA, URUT) VALUES ('INSTALASI', 'Instalasi', 3);
+INSERT INTO ORG_JENIS (KODE, NAMA, URUT) VALUES ('UNIT', 'Unit', 4);
+INSERT INTO ORG_JENIS (KODE, NAMA, URUT) VALUES ('KOMITE', 'Komite', 5);
+INSERT INTO ORG_JENIS (KODE, NAMA, URUT) VALUES ('TIM', 'Tim', 6);
 
 CREATE TABLE ORG_UNIT (
     UNIT_ID      NUMBER(10)    NOT NULL,
     INDUK_ID     NUMBER(10),                    -- atasan langsung; NULL = puncak
     NAMA         VARCHAR2(150) NOT NULL,
-    JENIS        VARCHAR2(12)  NOT NULL,        -- DIREKSI | BAGIAN | INSTALASI | UNIT | KOMITE | TIM
+    JENIS        VARCHAR2(12)  NOT NULL,        -- ORG_JENIS.KODE
     NAMA_KEPALA  VARCHAR2(150),                 -- pejabat saat ini (NULL = belum dicatat)
     URUT         NUMBER(4)     DEFAULT 0 NOT NULL,   -- urutan tampil (tidak disunting; unit baru di akhir)
     CREATED_AT   DATE          DEFAULT SYSDATE,
     UPDATED_AT   DATE          DEFAULT SYSDATE,
     CONSTRAINT org_unit_pk PRIMARY KEY (UNIT_ID),
     CONSTRAINT org_unit_ind_fk FOREIGN KEY (INDUK_ID) REFERENCES ORG_UNIT (UNIT_ID),
-    CONSTRAINT org_unit_jenis_ck CHECK (JENIS IN ('DIREKSI','BAGIAN','INSTALASI','UNIT','KOMITE','TIM'))
+    CONSTRAINT org_unit_jenis_fk FOREIGN KEY (JENIS) REFERENCES ORG_JENIS (KODE)
 );
 CREATE INDEX org_unit_induk_idx ON ORG_UNIT (INDUK_ID);
 

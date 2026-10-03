@@ -14,7 +14,11 @@ use App\Http\Traits\WithRenderVersioning\WithRenderVersioningTrait;
 new class extends Component {
     use WithRenderVersioningTrait;
 
-    public const JENIS = ['DIREKSI' => 'Direksi', 'BAGIAN' => 'Bagian', 'INSTALASI' => 'Instalasi', 'UNIT' => 'Unit', 'KOMITE' => 'Komite', 'TIM' => 'Tim'];
+    /** Pilihan jenis dari master ORG_JENIS. */
+    public function getJenisProperty(): array
+    {
+        return DB::table('org_jenis')->orderBy('urut')->orderBy('nama')->pluck('nama', 'kode')->all();
+    }
 
     public string $formMode = 'create';
     public int $originalId = 0;
@@ -29,7 +33,7 @@ new class extends Component {
 
     private function resetForm(): void
     {
-        $this->form = ['nama' => '', 'induk_id' => '', 'jenis' => 'INSTALASI', 'nama_kepala' => ''];
+        $this->form = ['nama' => '', 'induk_id' => '', 'jenis' => (string) array_key_first($this->jenis ?? []), 'nama_kepala' => ''];
         $this->resetValidation();
     }
 
@@ -95,7 +99,7 @@ new class extends Component {
         $this->validate([
             'form.nama' => 'required|string|max:150',
             'form.induk_id' => ['nullable', 'in:' . implode(',', array_keys($this->pilihan))],
-            'form.jenis' => 'required|in:' . implode(',', array_keys(self::JENIS)),
+            'form.jenis' => 'required|in:' . implode(',', array_keys($this->jenis)),
             'form.nama_kepala' => 'nullable|string|max:150',
         ], [
             'form.nama.required' => 'Nama unit wajib diisi.',
@@ -166,7 +170,7 @@ new class extends Component {
                         <div>
                             <x-input-label value="Jenis" />
                             <x-select-input wire:model="form.jenis" class="w-full mt-1">
-                                @foreach ($this::JENIS as $k => $nm)<option value="{{ $k }}">{{ $nm }}</option>@endforeach
+                                @foreach ($this->jenis as $k => $nm)<option value="{{ $k }}">{{ $nm }}</option>@endforeach
                             </x-select-input>
                         </div>
                         <div>
