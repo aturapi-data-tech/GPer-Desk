@@ -38,7 +38,7 @@ new class extends Component {
         [$row, $this->json] = $data;
         $jenis = DokumenService::jenis()[$row->jenis_kode] ?? null;
         $this->dok = (array) $row + ['jenis_nama' => $jenis->nama ?? $row->jenis_kode, 'tingkat' => (int) ($jenis->tingkat ?? 5),
-            'bisa_disusun' => $jenis->bisa_disusun ?? 'N', 'berpola' => filled($jenis->pola_nomor ?? null)];
+            'bisa_disusun' => $jenis->bisa_disusun ?? 'N', 'berpola' => DokumenService::bisaDinomori($jenis)];
         $ids = array_slice(DokumenService::jalurInduk($this->dokId), 1);
         $this->jalur = $ids ? DB::table('dok_dokumen')->whereIn('dok_id', $ids)->get(['dok_id', 'dok_no', 'dok_judul', 'jenis_kode'])
             ->sortBy(fn ($r) => array_search((int) $r->dok_id, $ids))->reverse()->map(fn ($r) => (array) $r)->values()->all() : [];

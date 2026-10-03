@@ -235,7 +235,7 @@ new class extends Component {
                 SUM(CASE WHEN status='BERLAKU' THEN 1 ELSE 0 END) berlaku,
                 SUM(CASE WHEN status='DRAF' THEN 1 ELSE 0 END) draf,
                 SUM(CASE WHEN status='BERLAKU' AND tgl_kaji_ulang <= SYSDATE + 60 THEN 1 ELSE 0 END) kaji,
-                SUM(CASE WHEN dok_no IS NULL AND jenis_kode IN (SELECT kode FROM dok_jenis WHERE pola_nomor IS NOT NULL) THEN 1 ELSE 0 END) tanpa_no
+                SUM(CASE WHEN dok_no IS NULL AND jenis_kode IN (SELECT kode FROM dok_jenis WHERE model_nomor <> 'TANPA' AND pola_nomor IS NOT NULL) THEN 1 ELSE 0 END) tanpa_no
             FROM dok_dokumen");
 
         return ['total' => (int) $r->total, 'berlaku' => (int) $r->berlaku, 'draf' => (int) $r->draf,

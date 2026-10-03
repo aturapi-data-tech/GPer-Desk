@@ -236,9 +236,27 @@ class DokumenService
 
     // ─── Penomoran (Pedoman BAB IV.C) ─────────────────────────────────────────
 
+    /** Model penomoran per jenis (DOK_JENIS.MODEL_NOMOR) — acuan saat membuat dokumen baru. */
+    public const MODEL_NOMOR = [
+        'SENDIRI' => 'Deret sendiri',
+        'INDUK'   => 'Ikut nomor induk',
+        'TURUNAN' => 'Turunan induk',
+        'TANPA'   => 'Tanpa nomor',
+    ];
+
+    /** Jenis ini dinomori aplikasi (bukan diisi manual / tanpa nomor)? */
+    public static function bisaDinomori(?object $jenis): bool
+    {
+        return $jenis && ($jenis->model_nomor ?? 'TANPA') !== 'TANPA' && filled($jenis->pola_nomor)
+            && ($jenis->model_nomor !== 'SENDIRI' || filled($jenis->seri));
+    }
+
     /**
-     * Ambil nomor resmi untuk dokumen yang belum bernomor. Penghitung dikunci
-     * SELECT … FOR UPDATE sehingga dua pengambilan bersamaan tidak mendapat nomor sama.
+     * Ambil nomor resmi untuk dokumen yang belum bernomor, menurut model penomoran jenisnya:
+     *  - SENDIRI: deret sendiri; penghitung dikunci SELECT … FOR UPDATE sehingga dua pengambilan
+     *    bersamaan tidak mendapat nomor sama.
+     *  - INDUK:   nomor SK/Perdir penetapnya (Pedoman/Panduan/Program = lampiran SK).
+     *  - TURUNAN: nomor induk + akhiran urut per induk ({INDUK}-F{NN}); baris induk dikunci.
      */
     public static function ambilNomor(int $dokId): string
     {
@@ -251,18 +269,40 @@ class DokumenService
                 return $dok->dok_no;
             }
             $jenis = self::jenis()[$dok->jenis_kode] ?? null;
-            if (! $jenis || blank($jenis->pola_nomor) || blank($jenis->seri)) {
+            if (! self::bisaDinomori($jenis)) {
                 throw new \DomainException(($jenis->nama ?? $dok->jenis_kode)
-                    . ' tidak memakai nomor registrasi sendiri (nomor diisi manual / mengikuti dokumen induk).');
+                    . ' tidak dinomori aplikasi (regulasi eksternal memakai nomor aslinya; bukti/rekaman tanpa nomor).');
             }
-            $tgl = $dok->tgl_terbit ? Carbon::parse($dok->tgl_terbit) : now();
-            $unit = $jenis->pakai_unit === 'Y' ? (string) ($dok->unit_kode ?? '') : '';
-            $tahun = $jenis->reset_tahunan === 'Y' ? (int) $tgl->year : 0;
-            $no = self::naikkanPenghitung($jenis->seri, $unit !== '' ? $unit : '-', $tahun);
-            $nomor = self::formatNomor($jenis->pola_nomor, $no, (string) $jenis->kode_surat, $unit, $tgl);
+
+            if ($jenis->model_nomor === 'SENDIRI') {
+                $tgl = $dok->tgl_terbit ? Carbon::parse($dok->tgl_terbit) : now();
+                $unit = $jenis->pakai_unit === 'Y' ? (string) ($dok->unit_kode ?? '') : '';
+                $tahun = $jenis->reset_tahunan === 'Y' ? (int) $tgl->year : 0;
+                $no = self::naikkanPenghitung($jenis->seri, $unit !== '' ? $unit : '-', $tahun);
+                $nomor = self::formatNomor($jenis->pola_nomor, $no, (string) $jenis->kode_surat, $unit, $tgl);
+            } else {
+                $induk = $dok->induk_id
+                    ? DB::table('dok_dokumen')->where('dok_id', $dok->induk_id)->lockForUpdate()->first()
+                    : null;
+                if (! $induk || blank($induk->dok_no)) {
+                    throw new \DomainException($jenis->nama . ' mengikuti nomor dokumen induknya — '
+                        . ($induk ? 'induk belum bernomor, ambil nomor induknya dulu.' : 'tetapkan induknya dulu ('
+                        . ($jenis->model_nomor === 'INDUK' ? 'SK / Peraturan Direktur penetapnya' : 'SPO / Pedoman / Panduan asalnya') . ').'));
+                }
+                $tgl = $dok->tgl_terbit ? Carbon::parse($dok->tgl_terbit)
+                    : ($induk->tgl_terbit ? Carbon::parse($induk->tgl_terbit) : now());
+                $no = 0;
+                if ($jenis->model_nomor === 'TURUNAN') {
+                    // urut per induk: akhiran tertinggi saudara yang sudah bernomor + 1
+                    $awalan = self::formatNomor($jenis->pola_nomor, 0, (string) $jenis->kode_surat, '', $tgl, $induk->dok_no, null);
+                    $no = 1 + (int) DB::table('dok_dokumen')->where('induk_id', $induk->dok_id)
+                        ->where('jenis_kode', $dok->jenis_kode)->where('dok_no', 'like', $awalan . '%')->max('dok_no_urut');
+                }
+                $nomor = self::formatNomor($jenis->pola_nomor, $no, (string) $jenis->kode_surat, '', $tgl, $induk->dok_no);
+            }
 
             DB::table('dok_dokumen')->where('dok_id', $dokId)->update([
-                'dok_no' => $nomor, 'dok_no_urut' => $no,
+                'dok_no' => $nomor, 'dok_no_urut' => $no ?: null,
                 'tgl_terbit' => $dok->tgl_terbit ?: $tgl->startOfDay(),
             ]);
             self::catat($dokId, 'NOMOR', "Nomor registrasi {$nomor}");
@@ -291,11 +331,21 @@ class DokumenService
         return $no;
     }
 
-    /** {NNN}/{KODE}{UNIT}/{RS}/{MM}/{YYYY} → 382/SPO/RSUI-MDN/01/2026 */
-    public static function formatNomor(string $pola, int $no, string $kodeSurat, string $unit, Carbon $tgl): string
+    /**
+     * {NNN}/{KODE}{UNIT}/{RS}/{MM}/{YYYY} → 382/SPO/RSUI-MDN/01/2026
+     * {INDUK}-F{NN} → 382/SPO/RSUI-MDN/01/2026-F01. $nn = null → potong pola sebelum {NN} (awalan saudara).
+     */
+    public static function formatNomor(string $pola, int $no, string $kodeSurat, string $unit, Carbon $tgl,
+        string $nomorInduk = '', ?int $nn = -1): string
     {
+        if ($nn === null) {
+            $pola = strstr($pola, '{NN}', true) ?: $pola;
+        }
+
         return strtr($pola, [
             '{NNN}' => str_pad((string) $no, 3, '0', STR_PAD_LEFT),
+            '{NN}' => str_pad((string) $no, 2, '0', STR_PAD_LEFT),
+            '{INDUK}' => $nomorInduk,
             '{KODE}' => $kodeSurat,
             '{UNIT}' => $unit,
             '{RS}' => (string) config('dokumen.kode_rs'),
@@ -307,12 +357,18 @@ class DokumenService
     /** Contoh nomor untuk pratinjau di master jenis. */
     public static function contohNomor(object $jenis): string
     {
-        if (blank($jenis->pola_nomor)) {
-            return '— manual / ikut induk —';
+        if (! self::bisaDinomori($jenis)) {
+            return ($jenis->kode ?? '') === 'EKS' ? '— nomor asli peraturan —' : '— tanpa nomor —';
         }
+        $contohSk = self::formatNomor('{NNN}/{KODE}/{RS}/{MM}/{YYYY}', 1, 'SK', '', now());
+        $contohSpo = self::formatNomor('{NNN}/{KODE}/{RS}/{MM}/{YYYY}', 382, 'SPO', '', now());
 
-        return self::formatNomor($jenis->pola_nomor, 1, (string) $jenis->kode_surat,
-            $jenis->pakai_unit === 'Y' ? 'kep' : '', now());
+        return match ($jenis->model_nomor) {
+            'INDUK' => self::formatNomor($jenis->pola_nomor, 0, '', '', now(), $contohSk),
+            'TURUNAN' => self::formatNomor($jenis->pola_nomor, 1, (string) $jenis->kode_surat, '', now(), $contohSpo),
+            default => self::formatNomor($jenis->pola_nomor, 1, (string) $jenis->kode_surat,
+                $jenis->pakai_unit === 'Y' ? 'kep' : '', now()),
+        };
     }
 
     /**
@@ -330,7 +386,7 @@ class DokumenService
     {
         $hasil = [];
         foreach (self::jenis() as $jenis) {
-            if (blank($jenis->seri) || blank($jenis->pola_nomor)) {
+            if (($jenis->model_nomor ?? '') !== 'SENDIRI' || ! self::bisaDinomori($jenis)) {
                 continue;
             }
             $kelompok = [];
@@ -483,7 +539,9 @@ class DokumenService
             }
             $jenis = self::jenis()[$row->jenis_kode] ?? null;
             $nomor = $row->dok_no;
-            if (blank($nomor) && $jenis && filled($jenis->pola_nomor) && filled($jenis->seri)) {
+            // model induk/turunan hanya bila induknya sudah bernomor — jangan menggagalkan tanda tangan
+            $indukBernomor = $row->induk_id && filled(DB::table('dok_dokumen')->where('dok_id', $row->induk_id)->value('dok_no'));
+            if (blank($nomor) && self::bisaDinomori($jenis) && ($jenis->model_nomor === 'SENDIRI' || $indukBernomor)) {
                 $nomor = self::ambilNomor($dokId);          // nomor resmi terbit saat ditetapkan
             }
             $waktu = now();

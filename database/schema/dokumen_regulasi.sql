@@ -52,6 +52,7 @@ CREATE TABLE DOK_JENIS (
     AKTIF          CHAR(1)       DEFAULT 'Y' NOT NULL,
     CONSTRAINT dok_jenis_pk PRIMARY KEY (KODE)
 );
+-- MODEL_NOMOR (SENDIRI|INDUK|TURUNAN|TANPA) ditambahkan oleh dokumen_model_nomor.sql — jalankan sesudah skrip ini.
 
 -- 3) SINGKATAN BAGIAN (Pedoman hal. 65)
 CREATE TABLE DOK_UNIT (

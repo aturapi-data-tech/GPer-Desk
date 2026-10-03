@@ -23,6 +23,21 @@ rendah dan lingkaran induk. Tampilan **Pohon** di registri menelusuri hierarki i
 
 ## Penomoran (BAB IV.C, hal. 64–66)
 
+**Model penomoran** (`DOK_JENIS.MODEL_NOMOR`, skrip `database/schema/dokumen_model_nomor.sql`) — acuan tunggal saat
+membuat/membangkitkan dokumen baru. Diputuskan user 3 Okt 2026:
+
+| Model | Jenis | Pola | Contoh |
+|---|---|---|---|
+| `SENDIRI` | PERDIR, SK, KEB (deret `SK`), SPO, SE, UND, STGS, SKET, BA | `{NNN}/{KODE}{UNIT}/{RS}/{MM}/{YYYY}` | `001/SK/RSUI-MDN/10/2026` |
+| `INDUK` | PED, PAN, PROG | `{INDUK}` = nomor SK/Perdir penetapnya | `001/SK/RSUI-MDN/10/2026` |
+| `TURUNAN` | FORM | `{INDUK}-F{NN}`, urut per induk | `382/SPO/RSUI-MDN/10/2026-F01` |
+| `TANPA` | EKS (nomor asli), LAP, NOT, DH, SERT, BUKTI | — | — |
+
+- Dokumen baru memakai kode jenis **polos** (`SK`, bukan `SK.Ak`/`PD.Ak`); nomor lama tidak diubah.
+- `INDUK`/`TURUNAN` menolak ambil nomor bila induk belum ditetapkan atau belum bernomor; saat tanda tangan nomor
+  otomatis hanya diambil bila induknya sudah bernomor (tidak menggagalkan tanda tangan).
+- `DokumenService::bisaDinomori($jenis)` = satu-satunya pemeriksa "jenis ini dinomori aplikasi".
+
 - Pola per jenis di `DOK_JENIS.POLA_NOMOR`, token `{NNN}/{KODE}{UNIT}/{RS}/{MM}/{YYYY}` →
   `384/SPO/RSUI-MDN/10/2026`. `{RS}` dari `DOK_KODE_RS` (Pedoman menulis RSI-MDN; terbit RSUI-MDN — keputusan Sekretariat).
 - `SERI`: jenis yang berbagi deret (PERDIR, SK, KEB → `SK`). `RESET_TAHUNAN`: SK/Und/BA per tahun, SPO menerus.
