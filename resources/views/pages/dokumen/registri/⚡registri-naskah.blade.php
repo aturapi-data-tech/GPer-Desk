@@ -224,7 +224,7 @@ new class extends Component {
         if (! $this->simpan(true)) {
             return;                                  // gagal simpan (mis. terkunci) → jangan cetak isi lama
         }
-        $this->dispatch('dokumen-naskah.buka-url', url: $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', ['dokId' => $this->dokId, 'unduh' => 1]));
+        $this->dispatch('dokumen-naskah-buka-url', url: $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', ['dokId' => $this->dokId, 'unduh' => 1]));
     }
 
     public function terbitkanNomor(): void
@@ -294,7 +294,7 @@ new class extends Component {
 };
 ?>
 
-<div x-data x-on:dokumen-naskah.buka-url.window="window.location.href = $event.detail.url">
+<div x-data x-on:dokumen-naskah-buka-url.window="window.location.href = $event.detail.url">
     <x-modal name="dokumen-registri-naskah" size="full" height="full">
         @php
             $f = $n['format'] ?? '';

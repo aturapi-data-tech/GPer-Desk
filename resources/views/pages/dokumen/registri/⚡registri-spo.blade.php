@@ -78,7 +78,7 @@ new class extends Component {
             return;                                  // gagal simpan (mis. terkunci) → jangan cetak isi lama
         }
         $url = $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', ['dokId' => $this->dokId, 'unduh' => 1]);
-        $this->dispatch('dokumen-spo.buka-url', url: $url);
+        $this->dispatch('dokumen-spo-buka-url', url: $url);
     }
 
     public function terbitkanNomor(): void
@@ -101,7 +101,7 @@ new class extends Component {
 };
 ?>
 
-<div x-data x-on:dokumen-spo.buka-url.window="window.location.href = $event.detail.url">
+<div x-data x-on:dokumen-spo-buka-url.window="window.location.href = $event.detail.url">
     <x-modal name="dokumen-registri-spo" size="full" height="full">
         <div class="flex flex-col h-full">
             <div class="px-6 py-4 border-b bg-surface-soft border-hairline dark:bg-gray-900 dark:border-gray-700">
