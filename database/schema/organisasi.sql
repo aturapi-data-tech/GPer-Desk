@@ -2,7 +2,8 @@
 -- SIGAP — Struktur Organisasi RSU Islam Madinah (model sederhana: pohon + kepala)
 -- Dasar: Peraturan Direktur PT Al-Ikhlas Madinah Nomor 104/SK/PT-AIM/10/2025 tentang Struktur Organisasi
 --        dan Tata Kerja RS Islam Madinah (Pasal 6, 16–32 + bagan Lampiran I) — akreditasi TKRS 3 EP a.
---        Pejabat: Keputusan Direktur PT Al-Ikhlas Madinah 096/SK/PT-AIM/7/2026 (sebagian; sisanya diisi di aplikasi).
+--        Pejabat: SK 096/SK/PT-AIM/7/2026 + SK komite, URGAS dan dokumen unit 2025–2026 di folder akreditasi
+--        (ditelusuri 3 Okt 2026; konflik diputuskan user). Kosong = tidak ditemukan / belum dipastikan.
 -- ORG_JENIS: master jenis unit (Direksi, Bagian, Instalasi, …) — RS lain cukup mengisi jenisnya sendiri.
 -- ORG_UNIT: satu baris per satuan organisasi; INDUK_ID = atasan langsung (bagan Lampiran I).
 --   Instalasi pelayanan (IGD … Jiwa) berinduk Bagian Pelayanan Medis; koordinasi keperawatan (Pasal 20) tidak dimodelkan.
@@ -44,6 +45,7 @@ CREATE TABLE ORG_UNIT (
     JENIS        VARCHAR2(12)  NOT NULL,        -- ORG_JENIS.KODE
     NAMA_KEPALA  VARCHAR2(150),                 -- pejabat saat ini (NULL = belum dicatat)
     URUT         NUMBER(4)     DEFAULT 0 NOT NULL,   -- urutan tampil (tidak disunting; unit baru di akhir)
+    ORG_JSON     CLOB,                          -- uraian tugas kepala (format URGAS RS) + job description staf — lihat docs/organisasi-modul.md
     CREATED_AT   DATE          DEFAULT SYSDATE,
     UPDATED_AT   DATE          DEFAULT SYSDATE,
     CONSTRAINT org_unit_pk PRIMARY KEY (UNIT_ID),
@@ -67,52 +69,52 @@ END;
 
 -- ── DATA AWAL ── (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT)
 INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (1, NULL, 'PT Al-Ikhlas Madinah', 'DIREKSI', 'Yayuk Sri Indiyah', 1);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (2, '1', 'Direktur Rumah Sakit', 'DIREKSI', 'dr. Fauziyah, M. Kes', 2);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (3, '2', 'Satuan Pengawas Internal', 'UNIT', 'Lilik Maesaroh, SE', 3);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (10, '2', 'Wakil Direktur Pelayanan', 'DIREKSI', NULL, 10);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (11, '10', 'Bagian Pelayanan Medis', 'BAGIAN', NULL, 11);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (12, '10', 'Bagian Pelayanan Keperawatan', 'BAGIAN', 'Indra Khesumah, S.Kep', 12);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (13, '10', 'Bagian Pelayanan Penunjang', 'BAGIAN', 'Anis Faridiana, Amd.Kes', 13);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (20, '2', 'Wakil Direktur Umum', 'DIREKSI', 'Sulistyo Budi, SE', 20);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (21, '20', 'Bagian Keuangan dan Logistik', 'BAGIAN', NULL, 21);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (22, '20', 'Bagian Personalia dan Ketatausahaan', 'BAGIAN', 'Erik Kardina, A.Md.Kep', 22);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (23, '20', 'Bagian Perencanaan dan Data RS', 'BAGIAN', NULL, 23);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (101, '11', 'Instalasi Gawat Darurat', 'INSTALASI', NULL, 101);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (102, '11', 'Instalasi Rawat Jalan', 'INSTALASI', 'Deana Isnaini, Amd.Kep', 102);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (103, '11', 'Instalasi Rawat Inap', 'INSTALASI', NULL, 103);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (104, '11', 'Instalasi Bedah', 'INSTALASI', NULL, 104);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (105, '11', 'Instalasi Rawat Intensif', 'INSTALASI', NULL, 105);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (106, '11', 'Instalasi Bersalin', 'INSTALASI', NULL, 106);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (107, '11', 'Instalasi Rawat Jiwa', 'INSTALASI', NULL, 107);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (131, '13', 'Instalasi Farmasi', 'INSTALASI', NULL, 131);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (132, '13', 'Instalasi Laboratorium', 'INSTALASI', 'Suciana, Amd.Kes', 132);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (133, '13', 'Instalasi Radiologi', 'INSTALASI', NULL, 133);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (134, '13', 'Instalasi Rekam Medis', 'INSTALASI', 'Ervintia Indriani, Amd.Keb', 134);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (135, '13', 'Instalasi Gizi', 'INSTALASI', NULL, 135);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (136, '13', 'Instalasi Sanitasi', 'INSTALASI', NULL, 136);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (137, '13', 'Instalasi CSSD dan Laundry', 'INSTALASI', NULL, 137);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (211, '21', 'Instalasi Logistik Obat dan Alat Kesehatan', 'INSTALASI', NULL, 211);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (212, '21', 'Instalasi Penjaminan', 'INSTALASI', NULL, 212);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (221, '22', 'Instalasi Keamanan, Ambulans dan Transportasi', 'INSTALASI', NULL, 221);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (222, '22', 'Instalasi Pemeliharaan Sarana dan Pemulasaraan Jenazah', 'INSTALASI', NULL, 222);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (231, '23', 'Unit Penyelenggara SIMRS (Teknologi Informasi)', 'UNIT', 'Nuur Wahid Anshary', 231);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (301, '2', 'Komite Medik', 'KOMITE', NULL, 301);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (302, '2', 'Komite Keperawatan', 'KOMITE', NULL, 302);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (303, '2', 'Komite Tenaga Kesehatan Lain', 'KOMITE', NULL, 303);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (304, '2', 'Komite Etik dan Hukum', 'KOMITE', NULL, 304);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (305, '2', 'Komite Peningkatan Mutu dan Keselamatan Pasien', 'KOMITE', NULL, 305);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (306, '2', 'Komite Pencegahan dan Pengendalian Infeksi', 'KOMITE', NULL, 306);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (307, '2', 'Komite Keselamatan dan Kesehatan Kerja Rumah Sakit', 'KOMITE', NULL, 307);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (311, '301', 'Subkomite Kredensial', 'KOMITE', NULL, 311);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (312, '301', 'Subkomite Mutu Profesi', 'KOMITE', NULL, 312);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (313, '301', 'Subkomite Etika dan Disiplin Profesi', 'KOMITE', NULL, 313);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (321, '302', 'Subkomite Kredensial Keperawatan', 'KOMITE', NULL, 321);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (322, '302', 'Subkomite Mutu Profesi Keperawatan', 'KOMITE', NULL, 322);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (323, '302', 'Subkomite Etika dan Disiplin Profesi Keperawatan', 'KOMITE', NULL, 323);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (331, '303', 'Subkomite Kredensial Tenaga Kesehatan Lain', 'KOMITE', NULL, 331);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (332, '303', 'Subkomite Mutu Profesi Tenaga Kesehatan Lain', 'KOMITE', NULL, 332);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (333, '303', 'Subkomite Etika dan Disiplin Profesi Tenaga Kesehatan Lain', 'KOMITE', NULL, 333);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (401, '2', 'Tim Promosi Kesehatan Rumah Sakit', 'TIM', NULL, 401);
-INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (402, '2', 'Tim Akreditasi', 'TIM', NULL, 402);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (2, 1, 'Direktur Rumah Sakit', 'DIREKSI', 'dr. Fauziyah, M. Kes', 2);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (3, 2, 'Satuan Pengawas Internal', 'UNIT', 'Lilik Maesaroh, SE', 3);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (10, 2, 'Wakil Direktur Pelayanan', 'DIREKSI', 'dr. Yuniar Hisa Pratiwi', 10);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (11, 10, 'Bagian Pelayanan Medis', 'BAGIAN', 'dr. Helen Lioni', 11);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (12, 10, 'Bagian Pelayanan Keperawatan', 'BAGIAN', 'Indra Khesumah, S.Kep', 12);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (13, 10, 'Bagian Pelayanan Penunjang', 'BAGIAN', 'Anis Faridiana, Amd.Kes', 13);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (20, 2, 'Wakil Direktur Umum', 'DIREKSI', 'Sulistyo Budi, SE', 20);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (21, 20, 'Bagian Keuangan dan Logistik', 'BAGIAN', 'Rintani Sulistyowati, A.Pd.', 21);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (22, 20, 'Bagian Personalia dan Ketatausahaan', 'BAGIAN', 'Erik Kardina, A.Md.Kep', 22);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (23, 20, 'Bagian Perencanaan dan Data RS', 'BAGIAN', 'Nuur Wahid Anshary', 23);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (101, 11, 'Instalasi Gawat Darurat', 'INSTALASI', 'dr. Rizky Setia Firdaus, M.Imun', 101);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (102, 11, 'Instalasi Rawat Jalan', 'INSTALASI', 'Deana Isnaini, Amd.Kep', 102);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (103, 11, 'Instalasi Rawat Inap', 'INSTALASI', NULL, 103);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (104, 11, 'Instalasi Bedah', 'INSTALASI', 'Rosyadi Anjab, S.Kep, Ners', 104);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (105, 11, 'Instalasi Rawat Intensif', 'INSTALASI', 'Naning Khoirun Nisa'', S.Kep, Ners', 105);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (106, 11, 'Instalasi Bersalin', 'INSTALASI', 'Naning Herawati, A.Md.Keb', 106);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (107, 11, 'Instalasi Rawat Jiwa', 'INSTALASI', NULL, 107);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (131, 13, 'Instalasi Farmasi', 'INSTALASI', 'apt. Edo Kristanto, S.Farm', 131);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (132, 13, 'Instalasi Laboratorium', 'INSTALASI', 'Suciana, Amd.Kes', 132);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (133, 13, 'Instalasi Radiologi', 'INSTALASI', 'Rahmat Yuliansyah, S.Tr.Kes (Rad)', 133);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (134, 13, 'Instalasi Rekam Medis', 'INSTALASI', 'Ervintia Indriani, Amd.Keb', 134);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (135, 13, 'Instalasi Gizi', 'INSTALASI', 'Setiana Ike Prastiwi, Amd.Gz', 135);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (136, 13, 'Instalasi Sanitasi', 'INSTALASI', 'Eko Budi Prasetiyo, S.Kep, Ners', 136);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (137, 13, 'Instalasi CSSD dan Laundry', 'INSTALASI', 'Eko Budi Prasetiyo, S.Kep, Ners', 137);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (211, 21, 'Instalasi Logistik Obat dan Alat Kesehatan', 'INSTALASI', NULL, 211);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (212, 21, 'Instalasi Penjaminan', 'INSTALASI', NULL, 212);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (221, 22, 'Instalasi Keamanan, Ambulans dan Transportasi', 'INSTALASI', 'Denok Isabela, A.Md.Kes', 221);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (222, 22, 'Instalasi Pemeliharaan Sarana dan Pemulasaraan Jenazah', 'INSTALASI', 'Kukuh Rofii', 222);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (231, 23, 'Unit Penyelenggara SIMRS (Teknologi Informasi)', 'UNIT', 'Nuur Wahid Anshary', 231);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (301, 2, 'Komite Medik', 'KOMITE', 'dr. Adriyawan Widya Nugraha, Sp.JP(K)', 301);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (302, 2, 'Komite Keperawatan', 'KOMITE', 'Rosyadi Anjab, S.Kep, Ners', 302);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (303, 2, 'Komite Tenaga Kesehatan Lain', 'KOMITE', 'Metha Andikasari, A.Md.RMIK', 303);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (304, 2, 'Komite Etik dan Hukum', 'KOMITE', 'dr. M. Yogiyo Pranoto, Sp.B', 304);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (305, 2, 'Komite Peningkatan Mutu dan Keselamatan Pasien', 'KOMITE', 'dr. Jimmy Akbar, Sp.P', 305);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (306, 2, 'Komite Pencegahan dan Pengendalian Infeksi', 'KOMITE', 'Eko Budi Prasetiyo, S.Kep, Ners', 306);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (307, 2, 'Komite Keselamatan dan Kesehatan Kerja Rumah Sakit', 'KOMITE', 'Bayu Gumelar, S.Kep, Ns', 307);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (311, 301, 'Subkomite Kredensial', 'KOMITE', 'dr. M. Yogiyo Pranoto, Sp.B', 311);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (312, 301, 'Subkomite Mutu Profesi', 'KOMITE', 'dr. Jimmy Akbar, Sp.P', 312);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (313, 301, 'Subkomite Etika dan Disiplin Profesi', 'KOMITE', 'dr. Bambang Suhadi, Sp.KFR', 313);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (321, 302, 'Subkomite Kredensial Keperawatan', 'KOMITE', 'Eko Budi Prasetiyo, S.Kep, Ners', 321);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (322, 302, 'Subkomite Mutu Profesi Keperawatan', 'KOMITE', 'Naning Khoirun Nisa'', S.Kep, Ners', 322);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (323, 302, 'Subkomite Etika dan Disiplin Profesi Keperawatan', 'KOMITE', 'Erik Kardina, A.Md.Kep', 323);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (331, 303, 'Subkomite Kredensial Tenaga Kesehatan Lain', 'KOMITE', 'apt. Lilis Kurniawati, S.Farm', 331);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (332, 303, 'Subkomite Mutu Profesi Tenaga Kesehatan Lain', 'KOMITE', 'Anis Faridiana, Amd.Kes', 332);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (333, 303, 'Subkomite Etika dan Disiplin Profesi Tenaga Kesehatan Lain', 'KOMITE', 'Linda Pitasari, S.K.M', 333);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (401, 2, 'Tim Promosi Kesehatan Rumah Sakit', 'TIM', 'Anis Faridiana, Amd.Kes', 401);
+INSERT INTO ORG_UNIT (UNIT_ID, INDUK_ID, NAMA, JENIS, NAMA_KEPALA, URUT) VALUES (402, 2, 'Tim Akreditasi', 'TIM', NULL, 402);
 
 COMMIT;

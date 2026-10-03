@@ -14,9 +14,11 @@ use Illuminate\Support\Facades\DB;
 new class extends Component {
     private const WARNA = ['brand', 'info', 'success', 'warning', 'purple', 'gray'];
 
-    public string $tab = 'unit';            // unit | jenis
+    public string $tab = 'unit';            // unit | bagan | jenis
     public string $searchKeyword = '';
     public ?string $jenisKode = null;       // null = tambah
+    public ?int $hapusId = null;            // konfirmasi hapus dari bagan
+    public string $hapusNama = '';
     public array $jenisForm = ['nama' => '', 'urut' => 0];
 
     public function resetFilters(): void
@@ -28,8 +30,46 @@ new class extends Component {
     public function openEdit(int $id): void { $this->dispatch('master.organisasi.openEdit', id: $id); }
     public function requestDelete(int $id): void { $this->dispatch('master.organisasi.requestDelete', id: $id); }
 
+    public function tanyaHapus(int $id): void
+    {
+        $this->hapusId = $id;
+        $this->hapusNama = (string) DB::table('org_unit')->where('unit_id', $id)->value('nama');
+        $this->dispatch('open-modal', name: 'master-organisasi-hapus');
+    }
+
+    public function konfirmasiHapus(): void
+    {
+        if ($this->hapusId) {
+            $this->requestDelete($this->hapusId);
+        }
+        $this->hapusId = null;
+        $this->dispatch('close-modal', name: 'master-organisasi-hapus');
+    }
+
     #[On('master.organisasi.saved')]
-    public function refreshAfterSaved(): void { unset($this->rows, $this->jenis); }
+    public function refreshAfterSaved(): void { unset($this->rows, $this->jenis, $this->bagan); }
+
+    /** Pohon bersarang untuk tab Bagan: [{id, nama, jenis, kepala, anak[]}]. */
+    #[Computed]
+    public function bagan(): array
+    {
+        $baris = DB::table('org_unit')->orderBy('urut')->orderBy('nama')->get(['unit_id', 'induk_id', 'nama', 'jenis', 'nama_kepala']);
+        $perInduk = $baris->groupBy(fn ($r) => (string) ($r->induk_id ?? ''));
+        $bangun = function (string $induk) use (&$bangun, $perInduk) {
+            return ($perInduk[$induk] ?? collect())->map(fn ($r) => ['id' => (int) $r->unit_id, 'nama' => $r->nama,
+                'jenis' => $r->jenis, 'kepala' => $r->nama_kepala, 'anak' => $bangun((string) $r->unit_id)])->values()->all();
+        };
+
+        return $bangun('');
+    }
+
+    /** Warna CSS per kode jenis (mengikuti warna badge). */
+    public function getWarnaBaganProperty(): array
+    {
+        $css = ['brand' => 'var(--primary, #16a34a)', 'info' => '#2563eb', 'success' => '#059669', 'warning' => '#d97706', 'purple' => '#7c3aed', 'gray' => '#6b7280'];
+
+        return $this->jenis->map(fn ($j) => $css[$j->warna] ?? '#6b7280')->all();
+    }
 
     /** Master jenis: kode => {nama, urut, warna, dipakai}. */
     #[Computed]
@@ -93,6 +133,14 @@ new class extends Component {
                 FROM org_unit u START WITH u.induk_id IS NULL CONNECT BY PRIOR u.unit_id = u.induk_id
                 ORDER SIBLINGS BY u.urut, u.nama'));
 
+        // nomor bertingkat (1, 1.2, 1.2.1): banyaknya angka = tingkat; awalan sama = satu induk
+        $hitung = [];
+        foreach ($rows as $r) {
+            $hitung = array_slice($hitung, 0, $r->lv);
+            $hitung[$r->lv - 1] = ($hitung[$r->lv - 1] ?? 0) + 1;
+            $r->nomor = implode('.', $hitung);
+        }
+
         if (trim($this->searchKeyword) !== '') {
             $kw = mb_strtoupper(trim($this->searchKeyword));
             $rows = $rows->filter(fn ($r) => str_contains(mb_strtoupper($r->nama . ' ' . $r->nama_kepala), $kw));
@@ -115,6 +163,7 @@ new class extends Component {
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <x-tabs variant="pill">
                             <x-tab :active="$tab === 'unit'" wire:click="$set('tab', 'unit')">Unit</x-tab>
+                            <x-tab :active="$tab === 'bagan'" wire:click="$set('tab', 'bagan')">Bagan</x-tab>
                             <x-tab :active="$tab === 'jenis'" wire:click="$set('tab', 'jenis')">Jenis Unit</x-tab>
                         </x-tabs>
                         @if ($tab === 'unit')
@@ -128,7 +177,7 @@ new class extends Component {
                         @if (\App\Services\DokumenService::bolehUbah())
                             @if ($tab === 'unit')
                                 <x-primary-button type="button" wire:click="openCreate">+ Tambah Unit</x-primary-button>
-                            @else
+                            @elseif ($tab === 'jenis')
                                 <x-primary-button type="button" wire:click="bukaJenis">+ Tambah Jenis</x-primary-button>
                             @endif
                         @endif
@@ -158,6 +207,7 @@ new class extends Component {
                                 <tr wire:key="org-{{ $r->unit_id }}">
                                     <td>
                                         <div class="flex items-center gap-2" style="padding-left: {{ $rata ? 0 : ($r->lv - 1) * 1.5 }}rem">
+                                            <span class="font-mono text-xs text-muted dark:text-gray-400" title="Tingkat {{ $r->lv }}">{{ $r->nomor }}</span>
                                             <span class="ds-td-strong">{{ $r->nama }}</span>
                                             <x-badge :variant="$this->jenis[$r->jenis]->warna ?? 'gray'">{{ $this->jenis[$r->jenis]->nama ?? $r->jenis }}</x-badge>
                                         </div>
@@ -183,6 +233,24 @@ new class extends Component {
                             @endforelse
                         </tbody>
                     </table>
+                    @elseif ($tab === 'bagan')
+                    <div x-data="{ z: 1 }" class="relative">
+                        <div class="sticky top-0 left-0 z-10 flex items-center gap-1 p-2">
+                            @if (\App\Services\DokumenService::bolehUbah())
+                                <span class="mr-2 text-xs text-muted dark:text-gray-400">Tombol di tiap kotak: <b>+</b> tambah unit di bawahnya · ubah · hapus</span>
+                            @endif
+                            <x-secondary-button type="button" x-on:click="z = Math.max(0.4, +(z - 0.1).toFixed(1))" title="Perkecil">−</x-secondary-button>
+                            <x-secondary-button type="button" x-on:click="z = 1" title="Ukuran asli"><span x-text="Math.round(z * 100) + '%'"></span></x-secondary-button>
+                            <x-secondary-button type="button" x-on:click="z = Math.min(1.5, +(z + 0.1).toFixed(1))" title="Perbesar">+</x-secondary-button>
+                        </div>
+                        <div class="org-bagan" x-bind:style="'zoom:' + z">
+                            <ul>
+                                @foreach ($this->bagan as $akar)
+                                    @include('pages.master.master-organisasi.bagan-node', ['node' => $akar, 'warna' => $this->warnaBagan, 'boleh' => \App\Services\DokumenService::bolehUbah()])
+                                @endforeach
+                            </ul>
+                        </div>
+                    </div>
                     @else
                     <table class="ds-table">
                         <thead class="sticky top-0 z-10">
@@ -218,6 +286,18 @@ new class extends Component {
                 @endif
             </div>
 
+            {{-- MODAL: konfirmasi hapus unit dari bagan --}}
+            <x-modal name="master-organisasi-hapus" size="md">
+                <div class="space-y-4">
+                    <h2 class="ds-display-sm dark:text-gray-100">Hapus unit?</h2>
+                    <p class="text-sm text-muted dark:text-gray-400"><b>{{ $hapusNama }}</b> akan dihapus. Unit yang masih punya unit di bawahnya tidak bisa dihapus.</p>
+                    <div class="flex justify-end gap-2">
+                        <x-secondary-button type="button" x-on:click="$dispatch('close-modal', { name: 'master-organisasi-hapus' })">Batal</x-secondary-button>
+                        <x-danger-button type="button" wire:click="konfirmasiHapus">Ya, hapus</x-danger-button>
+                    </div>
+                </div>
+            </x-modal>
+
             {{-- MODAL: tambah / ubah jenis unit --}}
             <x-modal name="master-organisasi-jenis" size="xl" focusable>
                 <div class="space-y-4">
@@ -238,6 +318,48 @@ new class extends Component {
                     </div>
                 </div>
             </x-modal>
+
+            <style>
+                /* Bagan organisasi: garis penghubung dengan ::before/::after (tanpa pustaka). */
+                .org-bagan { padding: 8px 24px 32px; width: max-content; min-width: 100%; }
+                .org-bagan ul { display: flex; justify-content: center; position: relative; padding: 20px 0 0; margin: 0; }
+                .org-bagan > ul { padding-top: 0; }
+                .org-bagan li { list-style: none; position: relative; padding: 20px 6px 0; display: flex; flex-direction: column; align-items: center; }
+                .org-bagan li::before, .org-bagan li::after { content: ''; position: absolute; top: 0; right: 50%; width: 50%; height: 20px; border-top: 1px solid #9ca3af; }
+                .org-bagan li::after { right: auto; left: 50%; border-left: 1px solid #9ca3af; }
+                .org-bagan li:only-child::before, .org-bagan li:only-child::after { display: none; }
+                .org-bagan li:only-child { padding-top: 0; }
+                .org-bagan li:first-child::before, .org-bagan li:last-child::after { border: 0 none; }
+                .org-bagan li:last-child::before { border-right: 1px solid #9ca3af; border-radius: 0 6px 0 0; }
+                .org-bagan li:first-child::after { border-radius: 6px 0 0 0; }
+                .org-bagan ul ul::before { content: ''; position: absolute; top: 0; left: 50%; height: 20px; border-left: 1px solid #9ca3af; }
+                .org-bagan > ul > li:only-child { padding-top: 0; }
+                /* unit setara tanpa bawahan: ditumpuk dengan garis siku di kiri + cabang per kotak (bukan rantai di tengah) */
+                .org-tumpuk { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+                              padding: 20px 0 0 24px; }
+                .org-tumpuk::before { content: ''; position: absolute; top: 10px; bottom: 28px; left: 12px; border-left: 1px solid #9ca3af; }
+                .org-tumpuk::after { content: ''; position: absolute; top: 0; left: 12px; width: calc(50% - 12px); height: 10px;
+                                     border-right: 1px solid #9ca3af; border-bottom: 1px solid #9ca3af; }
+                .org-tumpuk > .org-kotak::before { content: ''; position: absolute; top: 28px; left: -13px; width: 12px; border-top: 1px solid #9ca3af; }
+                .org-kotak { position: relative; width: 170px; padding: 6px 8px; border: 1px solid #d1d5db; border-top-width: 3px; border-radius: 10px;
+                             background: #fff; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+                .org-nama { font-size: 11.5px; font-weight: 600; line-height: 1.25; color: #111827; }
+                .org-kepala { margin-top: 3px; font-size: 10.5px; line-height: 1.2; color: #4b5563; }
+                .org-kosong { font-style: italic; color: #9ca3af; }
+                .org-aksi { display: flex; justify-content: center; gap: 4px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed #e5e7eb; }
+                .org-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; border-radius: 6px;
+                           border: 1px solid #d1d5db; background: #f9fafb; color: #4b5563; cursor: pointer; }
+                .org-btn svg { width: 13px; height: 13px; }
+                .org-btn:hover { background: #e5e7eb; color: #111827; }
+                .org-btn-tambah { color: var(--primary, #16a34a); border-color: var(--primary, #16a34a); }
+                .org-btn-tambah:hover { background: var(--primary, #16a34a); color: #fff; }
+                .org-btn-hapus { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+                .org-btn-hapus:hover { background: #dc2626; color: #fff; }
+                .dark .org-aksi { border-top-color: #374151; }
+                .dark .org-btn { background: #1f2937; border-color: #4b5563; color: #d1d5db; }
+                .dark .org-kotak { background: #111827; border-color: #374151; }
+                .dark .org-nama { color: #f3f4f6; } .dark .org-kepala { color: #9ca3af; }
+            </style>
 
             <livewire:pages::master.master-organisasi.master-organisasi-actions wire:key="master-organisasi-actions" />
         </div>
