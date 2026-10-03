@@ -6,27 +6,18 @@ use Illuminate\Support\Facades\DB;
 use App\Services\DokumenService;
 
 /**
- * Pengaturan Penomoran — master jenis naskah (pola nomor, kode surat, reset tahunan), penghitung
- * nomor (buku catatan nomor — Pedoman hal. 66, dikelola Sekretariat), dan singkatan bagian (hal. 65).
+ * Pengaturan Penomoran — master jenis naskah (model & pola nomor, kode surat, reset tahunan) dan
+ * singkatan bagian (hal. 65). Penghitung DOK_PENOMORAN tetap dipakai ambilNomor, tapi tidak disunting di sini.
  */
 new class extends Component {
-    public string $tab = 'jenis';    // jenis | penghitung | unit
+    public string $tab = 'jenis';    // jenis | unit
     public ?string $editKode = null;
     public array $jenisForm = [];
-    public array $penghitung = [];   // "seri|unit|tahun" => no_terakhir
     public array $unitBaru = ['kode' => '', 'nama' => ''];
-    public array $sinkron = [];
 
     public function mount(): void
     {
         abort_unless(DokumenService::bolehUbah(), 403);
-        $this->muatPenghitung();
-    }
-
-    private function muatPenghitung(): void
-    {
-        $this->penghitung = DB::table('dok_penomoran')->orderBy('seri')->orderBy('tahun')->get()
-            ->mapWithKeys(fn ($r) => ["{$r->seri}|{$r->unit_kode}|{$r->tahun}" => (int) $r->no_terakhir])->all();
     }
 
     #[Computed]
@@ -82,27 +73,6 @@ new class extends Component {
         $this->dispatch('toast', type: 'success', message: 'Jenis naskah disimpan.');
     }
 
-    public function simpanPenghitung(string $kunci): void
-    {
-        [$seri, $unit, $tahun] = explode('|', $kunci);
-        $no = max(0, (int) ($this->penghitung[$kunci] ?? 0));
-        DB::table('dok_penomoran')->where(['seri' => $seri, 'unit_kode' => $unit, 'tahun' => (int) $tahun])->update(['no_terakhir' => $no]);
-        $this->dispatch('toast', type: 'success', message: "Penghitung {$seri}" . ($tahun ? " {$tahun}" : '') . " = {$no}; nomor berikutnya " . ($no + 1) . '.');
-    }
-
-    public function tambahPenghitung(string $seri, int $tahun): void
-    {
-        DB::table('dok_penomoran')->updateOrInsert(['seri' => strtoupper($seri), 'unit_kode' => '-', 'tahun' => $tahun], ['no_terakhir' => 0]);
-        $this->muatPenghitung();
-    }
-
-    public function jalankanSinkron(): void
-    {
-        $this->sinkron = DokumenService::sinkronPenghitung();
-        $this->muatPenghitung();
-        $this->dispatch('toast', type: 'success', message: 'Sinkronisasi selesai.');
-    }
-
     public function bukaUnit(?string $kode = null): void
     {
         $this->resetValidation();
@@ -133,7 +103,7 @@ new class extends Component {
 ?>
 
 <div>
-    <x-page-title title="Pengaturan Penomoran" subtitle="Jenis naskah, pola nomor & buku catatan nomor — Pedoman Tata Naskah BAB IV.C" />
+    <x-page-title title="Pengaturan Penomoran" subtitle="Jenis naskah, model & pola nomor, singkatan bagian — Pedoman Tata Naskah BAB IV.C" />
 
     <div class="w-full h-[calc(100vh-5rem)] flex flex-col bg-surface-soft dark:bg-gray-900">
         <div class="flex flex-col flex-1 min-h-0 px-6 pt-2 pb-6">
@@ -143,15 +113,10 @@ new class extends Component {
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <x-tabs variant="pill">
                         <x-tab :active="$tab === 'jenis'" wire:click="$set('tab', 'jenis')">Jenis naskah &amp; pola nomor</x-tab>
-                        <x-tab :active="$tab === 'penghitung'" wire:click="$set('tab', 'penghitung')">Buku catatan nomor</x-tab>
                         <x-tab :active="$tab === 'unit'" wire:click="$set('tab', 'unit')">Singkatan bagian</x-tab>
                     </x-tabs>
                     <div class="flex items-center justify-end gap-2">
-                        @if ($tab === 'penghitung')
-                            <x-secondary-button type="button" wire:click="tambahPenghitung('SK', {{ now()->year }})">+ SK {{ now()->year }}</x-secondary-button>
-                            <x-confirm-button variant="secondary" action="jalankanSinkron" title="Sinkronkan penghitung"
-                                message="Naikkan penghitung deret tahunan ke nomor tertinggi yang tercatat? (Penghitung tidak pernah diturunkan; deret SPO hanya diberi usulan.)">Sinkronkan dari registri</x-confirm-button>
-                        @elseif ($tab === 'unit')
+                        @if ($tab === 'unit')
                             <x-primary-button type="button" wire:click="bukaUnit">+ Tambah Singkatan</x-primary-button>
                         @endif
                     </div>
@@ -194,28 +159,6 @@ new class extends Component {
                                 @endforelse
                             </tbody>
                         </table>
-                    @elseif ($tab === 'penghitung')
-                        <table class="ds-table">
-                            <thead class="sticky top-0 z-10">
-                                <tr><th>Seri</th><th>Bagian</th><th>Tahun</th><th>Nomor terakhir</th><th>Berikutnya</th><th class="ds-c">Aksi</th></tr>
-                            </thead>
-                            <tbody>
-                                @forelse ($penghitung as $kunci => $no)
-                                    @php [$seri, $unit, $tahun] = explode('|', $kunci); @endphp
-                                    <tr wire:key="p-{{ $kunci }}">
-                                        <td class="ds-td-token">{{ $seri }}</td>
-                                        <td>{{ $unit }}</td>
-                                        <td>{{ $tahun ?: 'menerus' }}</td>
-                                        <td><x-text-input type="number" min="0" wire:model="penghitung.{{ $kunci }}" class="w-28" /></td>
-                                        <td class="font-mono">{{ str_pad((string) ((int) $no + 1), 3, '0', STR_PAD_LEFT) }}</td>
-                                        <td class="ds-c"><x-confirm-button variant="primary" action="simpanPenghitung('{{ $kunci }}')" title="Setel penghitung"
-                                            message="Setel nomor terakhir {{ $seri }}? Nomor yang sudah terbit tidak berubah.">Setel</x-confirm-button></td>
-                                    </tr>
-                                @empty
-                                    <tr><td colspan="6" class="px-6 py-16 text-center text-muted">Belum ada penghitung — dibuat otomatis saat nomor pertama diambil.</td></tr>
-                                @endforelse
-                            </tbody>
-                        </table>
                     @else
                         <table class="ds-table">
                             <thead class="sticky top-0 z-10">
@@ -248,11 +191,6 @@ new class extends Component {
                         <b>Ikut nomor induk</b> (Pedoman/Panduan/Program = nomor SK penetapnya) ·
                         <b>Turunan induk</b> (Formulir = nomor SPO + -F01) · <b>Tanpa nomor</b> (eksternal, bukti).
                         Kode RS: <b class="font-mono">{{ config('dokumen.kode_rs') }}</b> (<code>DOK_KODE_RS</code> di .env).
-                    @elseif ($tab === 'penghitung')
-                        Nomor berikutnya = nomor terakhir + 1. Deret SPO menerus (tidak direset) dan dikelola Sekretariat; deret tahunan bisa disinkronkan dari registri.
-                        @if ($sinkron)
-                            <ul class="mt-1 list-disc list-inside">@foreach ($sinkron as $s)<li>{{ $s }}</li>@endforeach</ul>
-                        @endif
                     @else
                         Singkatan huruf kecil tanpa spasi (Pedoman hal. 65). Klik status untuk mengaktifkan / menonaktifkan.
                     @endif

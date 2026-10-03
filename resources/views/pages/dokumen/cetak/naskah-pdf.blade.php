@@ -1,5 +1,5 @@
 {{-- Cetak naskah dinas dari JSON (DomPDF) — Pedoman Tata Naskah BAB III.
-     Format: peraturan · keputusan · bab (Pedoman/Panduan/Program) · edaran. SPO: spo-pdf.blade.php.
+     Format: peraturan · keputusan · bab (Pedoman/Panduan/Program) · edaran · undangan. SPO: spo-pdf.blade.php.
      Kop resmi = latar satu halaman penuh tiap halaman (sama dengan pasang_kop.py perkakas akreditasi);
      marjin aturan rumah: atas 7,37 cm (tinggi blok logo kop), kiri/kanan 2,5, bawah 2,0 cm.
      DomPDF tanpa flex/grid → tabel. Variabel: $dok, $n (isi.naskah), $lampiran, $tanggal. --}}
@@ -125,6 +125,24 @@
         <div style="margin-bottom: 8px">Yth.</div>
         <ol style="margin-bottom: 10px">@foreach ($n['yth'] ?? [] as $y)<li>{{ $y }}</li>@endforeach</ol>
         <div class="rata">{!! $html($n['isi'] ?? '') !!}</div>
+    @endif
+
+    {{-- ══ SURAT UNDANGAN: nomor · sifat · lampiran · hal · Yth · pembuka · acara · penutup (hal. 40–41) ══ --}}
+    @if ($format === 'undangan')
+        <table class="konsideran" style="width: 11cm; margin-bottom: 14px">
+            @foreach (['Nomor' => $dok->dok_no ?: '…', 'Sifat' => $n['sifat'] ?? '', 'Lampiran' => $n['lampiran'] ?? '', 'Hal' => $n['hal'] ?? ''] as $lb => $v)
+                <tr><td style="width: 2.2cm">{{ $lb }}</td><td style="width: 0.4cm">:</td><td style="text-align: left">{{ $v }}</td></tr>
+            @endforeach
+        </table>
+        <div>Yth.</div>
+        <div style="margin-bottom: 12px">@foreach ($n['yth'] ?? [] as $y)<div>{{ $y }}</div>@endforeach</div>
+        <div class="rata">{!! $html($n['pembuka'] ?? '') !!}</div>
+        <table class="konsideran" style="margin: 6px 0 8px 1.2cm; width: auto">
+            @foreach (TataNaskah::ACARA as $ka => $la)
+                <tr><td style="width: 2.4cm">{{ $la }}</td><td style="width: 0.4cm">:</td><td style="text-align: left">{{ $n['acara'][$ka] ?? '' }}</td></tr>
+            @endforeach
+        </table>
+        <div class="rata">{!! $html($n['penutup'] ?? '') !!}</div>
     @endif
 
     {{-- ══ PEDOMAN · PANDUAN · PROGRAM KERJA: lampiran Perdir + BAB (hal. 13, 15–22) ══ --}}

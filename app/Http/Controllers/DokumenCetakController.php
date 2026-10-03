@@ -135,6 +135,7 @@ class DokumenCetakController extends Controller
             return response($isi, 200, [
                 'Content-Type' => 'application/pdf',
                 'Content-Disposition' => self::sajian() . '; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
+                'Cache-Control' => 'no-store, max-age=0',   // PDF dibangkitkan dari JSON — jangan disajikan dari cache
             ]);
         }
         $pdf = Pdf::loadView('pages.dokumen.cetak.naskah-pdf', $d)->setPaper('A4', 'portrait')
@@ -154,6 +155,7 @@ class DokumenCetakController extends Controller
         return response($dompdf->output(), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => self::sajian() . '; filename="' . $this->namaBerkasNaskah($d['dok'], 'pdf') . '"',
+                'Cache-Control' => 'no-store, max-age=0',   // PDF dibangkitkan dari JSON — jangan disajikan dari cache
         ]);
     }
 
@@ -266,6 +268,30 @@ class DokumenCetakController extends Controller
             }
             $this->tulisHtml($word, $section, $this->rapikanHtml($n['isi'] ?: '<p>-</p>'));
         }
+        if ($n['format'] === 'undangan') {
+            $t = $section->addTable($tanpaGaris);
+            foreach (['Nomor' => $dok->dok_no ?: '…', 'Sifat' => $n['sifat'] ?? '', 'Lampiran' => $n['lampiran'] ?? '', 'Hal' => $n['hal'] ?? ''] as $lb => $v) {
+                $t->addRow();
+                $t->addCell($cm(2.2))->addText($lb, [], ['spaceAfter' => 0]);
+                $t->addCell($cm(0.4))->addText(':', [], ['spaceAfter' => 0]);
+                $t->addCell($cm(8.4))->addText(htmlspecialchars((string) $v), [], ['spaceAfter' => 0]);
+            }
+            $section->addText('Yth.', [], ['spaceBefore' => 240, 'spaceAfter' => 0]);
+            foreach ($n['yth'] ?? [] as $y) {
+                $section->addText(htmlspecialchars($y), [], ['spaceAfter' => 0]);
+            }
+            $section->addTextBreak();
+            $this->tulisHtml($word, $section, $this->rapikanHtml($n['pembuka'] ?: '<p>-</p>'));
+            $t = $section->addTable($tanpaGaris + ['indent' => new \PhpOffice\PhpWord\ComplexType\TblWidth($cm(1.2))]);
+            foreach (TataNaskah::ACARA as $ka => $la) {
+                $t->addRow();
+                $t->addCell($cm(2.4))->addText($la, [], ['spaceAfter' => 40]);
+                $t->addCell($cm(0.4))->addText(':', [], ['spaceAfter' => 40]);
+                $t->addCell($cm(10.0))->addText(htmlspecialchars((string) ($n['acara'][$ka] ?? '')), [], ['spaceAfter' => 40]);
+            }
+            $section->addTextBreak();
+            $this->tulisHtml($word, $section, $this->rapikanHtml($n['penutup'] ?: '<p>-</p>'));
+        }
         if ($n['format'] === 'bab') {
             $romawi = (TataNaskah::SISTEMATIKA[$n['sistematika'] ?? ''][1] ?? 'BAB') === 'romawi';
             if ($lampiran) {
@@ -325,7 +351,7 @@ class DokumenCetakController extends Controller
             $kanan->addText(htmlspecialchars($k['penyusun']['nama'] ?? ''), ['bold' => true], ['spaceAfter' => 0]);
         } else {
             $kanan = ['indentation' => ['left' => $cm(8.5)]] + $ikat;
-            if ($n['format'] !== 'edaran') {
+            if (! in_array($n['format'], ['edaran', 'undangan'], true)) {
                 $section->addText('Ditetapkan di ' . htmlspecialchars($k['tempat'] ?? 'Tulungagung'), [], $kanan);
                 $section->addText('pada tanggal ' . ($tanggal ?: '…'), [], $kanan);
                 $section->addTextBreak(1, [], $kanan);
@@ -464,6 +490,7 @@ class DokumenCetakController extends Controller
         return response($dompdf->output(), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => self::sajian() . '; filename="' . $this->namaBerkas($d['dok'], 'pdf') . '"',
+                'Cache-Control' => 'no-store, max-age=0',   // PDF dibangkitkan dari JSON — jangan disajikan dari cache
         ]);
     }
 

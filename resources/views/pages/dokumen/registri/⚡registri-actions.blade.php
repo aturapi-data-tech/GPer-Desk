@@ -1,31 +1,24 @@
 <?php
 
 use Livewire\Component;
-use Livewire\WithFileUploads;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Database\QueryException;
 use App\Services\DokumenService;
 use App\Http\Traits\WithRenderVersioning\WithRenderVersioningTrait;
 
+/**
+ * Buat / ubah dokumen — sengaja ringkas: jenis + judul (+ induk bila nomornya ikut induk).
+ * Nomor, tanggal terbit, revisi dan status diisi sistem; sesudah "Buat" penyusun isi langsung terbuka
+ * (Buat → Susun isi → PDF). Hanya jenis yang punya penyusun (DOK_JENIS.BISA_DISUSUN = 'Y').
+ */
 new class extends Component {
-    use WithRenderVersioningTrait, WithFileUploads;
+    use WithRenderVersioningTrait;
 
     public string $formMode = 'create';
     public int $originalId = 0;
     public array $renderVersions = [];
-    protected array $renderAreas = ['modal'];
-
     public array $form = [];
-    /** baris kaitan akreditasi: [{bab, standar, ep, elemen}] */
-    public array $akreditasi = [];
-    /** berkas yang sudah tercatat (dari JSON) */
-    public array $berkas = [];
-    public $unggahan = null;
-    public string $ringkasan = '';
-    /** "MRMIK 12 · EP b — Pengkajian RM Berkala" bila dibuka dari tombol + di pohon akreditasi */
-    public string $konteksEp = '';
 
     public function mount(): void
     {
@@ -35,63 +28,31 @@ new class extends Component {
 
     private function resetForm(): void
     {
-        $this->form = [
-            'jenis_kode' => 'SPO', 'induk_id' => null, 'dok_judul' => '', 'dok_no' => '', 'unit_kode' => '',
-            'tgl_terbit' => '', 'tgl_kaji_ulang' => '', 'no_revisi' => 0, 'status' => 'DRAF',
-            'klasifikasi' => 'BIASA', 'sumber' => 'INTERNAL',
-        ];
-        $this->akreditasi = [];
-        $this->berkas = [];
-        $this->unggahan = null;
-        $this->ringkasan = '';
-        $this->konteksEp = '';
+        $this->form = ['jenis_kode' => 'SPO', 'dok_judul' => '', 'induk_id' => null, 'unit_kode' => ''];
         $this->resetValidation();
     }
 
+    /** Jenis yang bisa dibuat di sini: yang punya penyusun isi. */
+    public function getJenisBuatProperty()
+    {
+        return DokumenService::jenis()->where('bisa_disusun', 'Y');
+    }
+
+    public function getJenisTerpilihProperty(): ?object
+    {
+        return DokumenService::jenis()[$this->form['jenis_kode']] ?? null;
+    }
+
     #[On('dokumen.registri.openCreate')]
-    public function openCreate(?int $indukId = null, ?array $ep = null): void
+    public function openCreate(?int $indukId = null): void
     {
         abort_unless(DokumenService::bolehUbah(), 403);
         $this->resetForm();
         $this->formMode = 'create';
         $this->originalId = 0;
-        if ($indukId) {
-            $this->form['induk_id'] = $indukId;
-        }
-        if ($ep) {
-            $this->isiDariEp($ep);
-        }
+        $this->form['induk_id'] = $indukId;
         $this->incrementVersion('modal');
         $this->dispatch('open-modal', name: 'dokumen-registri-actions');
-    }
-
-    /**
-     * Tambah dari pohon akreditasi: kaitan EP terisi; jenis bawaan menurut elemen (R → Keputusan Direktur, selain itu
-     * Bukti); induk diusulkan bila di EP itu — atau di standar yang sama — hanya ada satu regulasi (bisa dihapus).
-     */
-    private function isiDariEp(array $ep): void
-    {
-        $unsur = array_map('trim', explode(',', (string) ($ep['elemen'] ?? '')));
-        $elemen = in_array('R', $unsur, true) ? 'R' : (in_array('D', $unsur, true) ? 'D' : ($unsur[0] ?? ''));
-        $this->akreditasi = [['bab' => $ep['bab'], 'standar' => $ep['standar'], 'ep' => $ep['ep'],
-            'elemen' => in_array($elemen, ['R', 'D', 'O', 'W', 'S'], true) ? $elemen : '']];
-        $this->form['jenis_kode'] = $elemen === 'R' ? 'SK' : 'BUKTI';
-        $this->konteksEp = "{$ep['standar']} · EP {$ep['ep']}" . (filled($ep['judul'] ?? '') ? ' — ' . $ep['judul'] : '');
-
-        if ($elemen !== 'R') {
-            $regulasi = fn ($q) => $q->join('dok_dokumen as dk', 'dk.dok_id', '=', 'ak.dok_id')
-                ->join('dok_jenis as dj', 'dj.kode', '=', 'dk.jenis_kode')
-                ->where('dj.tingkat', '<=', 3)->where('dk.status', 'BERLAKU')
-                // catatan kembar bernomor sama (salinan folder kerja & SIDOKAR) dihitung satu dokumen
-                ->selectRaw('MIN(dk.dok_id) dok_id')->groupByRaw('COALESCE(dk.dok_no, TO_CHAR(dk.dok_id))')->pluck('dok_id');
-            $diEp = $regulasi(DB::table('dok_akreditasi as ak')->where('ak.bab', $ep['bab'])
-                ->where('ak.standar', $ep['standar'])->where('ak.ep', $ep['ep']));
-            $calon = $diEp->count() ? $diEp : $regulasi(DB::table('dok_akreditasi as ak')
-                ->where('ak.bab', $ep['bab'])->where('ak.standar', $ep['standar']));
-            if ($calon->count() === 1) {
-                $this->form['induk_id'] = (int) $calon->first();
-            }
-        }
     }
 
     #[On('dokumen.registri.openEdit')]
@@ -104,15 +65,10 @@ new class extends Component {
         $this->resetForm();
         $this->formMode = 'edit';
         $this->originalId = $dokId;
-        foreach (array_keys($this->form) as $k) {
-            $this->form[$k] = $row->{$k} ?? $this->form[$k];
-        }
-        $this->form['tgl_terbit'] = $row->tgl_terbit ? substr((string) $row->tgl_terbit, 0, 10) : '';
-        $this->form['tgl_kaji_ulang'] = $row->tgl_kaji_ulang ? substr((string) $row->tgl_kaji_ulang, 0, 10) : '';
-        $this->form['induk_id'] = $row->induk_id ? (int) $row->induk_id : null;
-        $this->akreditasi = $json['akreditasi'] ?? [];
-        $this->berkas = $json['berkas'] ?? [];
-        $this->ringkasan = (string) ($json['ringkasan'] ?? '');
+        $this->form = [
+            'jenis_kode' => $row->jenis_kode, 'dok_judul' => (string) ($json['judulAsli'] ?? $row->dok_judul),
+            'induk_id' => $row->induk_id ? (int) $row->induk_id : null, 'unit_kode' => (string) ($row->unit_kode ?? ''),
+        ];
         $this->incrementVersion('modal');
         $this->dispatch('open-modal', name: 'dokumen-registri-actions');
     }
@@ -129,39 +85,18 @@ new class extends Component {
         $this->form['induk_id'] = null;
     }
 
-    public function tambahAkreditasi(): void
-    {
-        $this->akreditasi[] = ['bab' => '', 'standar' => '', 'ep' => '', 'elemen' => ''];
-    }
-
-    public function hapusAkreditasi(int $i): void
-    {
-        unset($this->akreditasi[$i]);
-        $this->akreditasi = array_values($this->akreditasi);
-    }
-
-    public function hapusBerkas(string $id): void
-    {
-        $this->berkas = array_values(array_filter($this->berkas, fn ($b) => ($b['id'] ?? '') !== $id));
-    }
-
-    /** Tingkat jenis terpilih — LOV induk hanya menawarkan yang setingkat/lebih tinggi. */
-    public function getTingkatProperty(): int
-    {
-        return (int) (DokumenService::jenis()[$this->form['jenis_kode']]->tingkat ?? 5);
-    }
-
     #[On('dokumen.registri.requestDelete')]
     public function hapus(int $dokId): void
     {
         abort_unless(DokumenService::bolehUbah(), 403);
         try {
+            DB::table('dok_akreditasi')->where('dok_id', $dokId)->delete();
             DB::table('dok_dokumen')->where('dok_id', $dokId)->delete();
-            $this->dispatch('toast', type: 'success', message: 'Dokumen dihapus dari registri.');
+            $this->dispatch('toast', type: 'success', message: 'Dokumen dihapus.');
             $this->dispatch('dokumen.registri.saved');
         } catch (QueryException $e) {
             if (str_contains($e->getMessage(), 'ORA-02292')) {
-                $this->dispatch('toast', type: 'error', message: 'Dokumen masih menjadi induk / pengganti dokumen lain — pindahkan turunannya dulu.');
+                $this->dispatch('toast', type: 'error', message: 'Dokumen masih menjadi induk dokumen lain — hapus/pindahkan turunannya dulu.');
                 return;
             }
             throw $e;
@@ -171,78 +106,54 @@ new class extends Component {
     public function save(): void
     {
         abort_unless(DokumenService::bolehUbah(), 403);
+        $jenis = $this->jenisTerpilih;
         $this->validate([
-            'form.jenis_kode' => 'required|string',
+            'form.jenis_kode' => 'required|in:' . $this->jenisBuat->keys()->implode(','),
             'form.dok_judul' => 'required|string|max:1000',
-            'form.dok_no' => 'nullable|string|max:150',
-            'form.tgl_terbit' => 'nullable|date',
-            'form.tgl_kaji_ulang' => 'nullable|date',
-            'form.no_revisi' => 'required|integer|min:0|max:' . config('dokumen.revisi_maks'),
-            'form.status' => 'required|in:' . implode(',', array_keys(DokumenService::STATUS)),
-            'form.klasifikasi' => 'required|in:' . implode(',', array_keys(DokumenService::KLASIFIKASI)),
-            'akreditasi.*.bab' => 'required|in:' . implode(',', array_keys(config('dokumen.pokja'))),
-            'unggahan' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png',
+            'form.unit_kode' => ($jenis?->pakai_unit === 'Y' ? 'required' : 'nullable') . '|string|max:10',
         ], [
             'form.dok_judul.required' => 'Judul dokumen wajib diisi.',
-            'form.no_revisi.max' => 'Revisi maksimal 04 — revisi ke-5 wajib dokumen baru (Pedoman hal. 71).',
-            'akreditasi.*.bab.required' => 'Pilih bab akreditasi.',
-            'unggahan.mimes' => 'Berkas harus PDF, Word, Excel, atau gambar.',
+            'form.unit_kode.required' => 'Pilih bagian — kode bagian masuk ke nomor dokumen.',
         ]);
 
         $header = [
             'jenis_kode' => $this->form['jenis_kode'],
-            'induk_id' => $this->form['induk_id'] ?: null,
             'dok_judul' => trim($this->form['dok_judul']),
-            'dok_no' => trim((string) $this->form['dok_no']) ?: null,
-            'unit_kode' => $this->form['unit_kode'] ?: null,
-            'tgl_terbit' => $this->form['tgl_terbit'] ?: null,
-            'tgl_kaji_ulang' => $this->form['tgl_kaji_ulang'] ?: null,
-            'no_revisi' => (int) $this->form['no_revisi'],
-            'status' => $this->form['status'],
-            'klasifikasi' => $this->form['klasifikasi'],
-            'sumber' => $this->form['sumber'] ?: 'INTERNAL',
-            'pokja' => implode(',', array_values(array_unique(array_filter(array_column($this->akreditasi, 'bab'))))) ?: null,
+            'induk_id' => ($jenis?->model_nomor === 'INDUK' ? $this->form['induk_id'] : null) ?: null,
+            'unit_kode' => ($jenis?->pakai_unit === 'Y' ? $this->form['unit_kode'] : null) ?: null,
         ];
-        // nomor urut dari nomor yang diketik manual (supaya penghitung bisa disinkronkan)
-        if ($header['dok_no'] && preg_match('/^(\d{1,6})(?:\.\d+)?\//', $header['dok_no'], $m)) {
-            $header['dok_no_urut'] = (int) $m[1];
-        }
-
-        $berkas = $this->berkas;
-        if ($this->unggahan) {
-            $folder = config('dokumen.folder_unggah') . '/' . now()->format('Y/m');
-            $nama = $this->unggahan->getClientOriginalName();
-            $path = $this->unggahan->storeAs($folder, now()->format('His') . '-' . Str::slug(pathinfo($nama, PATHINFO_FILENAME)) . '.' . $this->unggahan->getClientOriginalExtension(), 'local');
-            $berkas[] = [
-                'id' => (string) Str::uuid(), 'peran' => 'UNGGAH', 'lokasi' => 'unggah', 'path' => $path,
-                'nama' => $nama, 'ukuran' => $this->unggahan->getSize(), 'mime' => $this->unggahan->getMimeType(),
-                'waktu' => now()->format('Y-m-d H:i:s'), 'oleh' => DokumenService::namaPengguna(),
-            ];
+        if ($this->formMode === 'edit') {
+            unset($header['jenis_kode']);                  // jenis menentukan format isi — tidak diganti sesudah dibuat
+            if ($jenis?->model_nomor !== 'INDUK') unset($header['induk_id']);
+        } else {
+            $header += ['status' => 'DRAF', 'no_revisi' => 0, 'klasifikasi' => 'BIASA', 'sumber' => 'INTERNAL'];
         }
 
         try {
             if ($this->formMode === 'edit') {
                 DokumenService::pastikanTidakTerkunci($this->originalId);
-            }
-            $json = $this->formMode === 'edit' ? DokumenService::baca($this->originalId)[1] : DokumenService::jsonKosong();
-            $json['akreditasi'] = array_values($this->akreditasi);
-            $json['berkas'] = $berkas;
-            $json['ringkasan'] = $this->ringkasan;
-            if (empty($json['penandatangan']['ditetapkan']) && ($jenis = DokumenService::jenis()[$header['jenis_kode']] ?? null) && $jenis->disahkan_oleh === 'Direktur') {
-                $json['penandatangan']['ditetapkan'] = config('dokumen.pejabat.direktur');
+                $json = DokumenService::baca($this->originalId)[1];
+            } else {
+                $json = DokumenService::jsonKosong();
+                if ($jenis?->disahkan_oleh === 'Direktur') {
+                    $json['penandatangan']['ditetapkan'] = config('dokumen.pejabat.direktur');
+                }
             }
             $id = DokumenService::simpan($this->formMode === 'edit' ? $this->originalId : null, $header, $json,
-                $this->formMode === 'edit' ? 'UBAH' : 'BUAT', $this->unggahan ? 'unggah ' . $this->unggahan->getClientOriginalName() : '');
+                $this->formMode === 'edit' ? 'UBAH' : 'BUAT');
         } catch (\DomainException $e) {
             $this->addError('form.induk_id', $e->getMessage());
-            $this->dispatch('toast', type: 'error', message: $e->getMessage());
             return;
         }
 
-        $this->dispatch('toast', type: 'success', message: 'Dokumen tersimpan.');
+        $baru = $this->formMode === 'create';
         $this->closeModal();
         $this->dispatch('dokumen.registri.saved');
-        $this->dispatch('dokumen.registri.openDetail', dokId: $id);
+        if ($baru) {
+            $this->dispatch(DokumenService::penyusun($id), dokId: $id);   // langsung ke penyusun isi
+        } else {
+            $this->dispatch('toast', type: 'success', message: 'Dokumen tersimpan.');
+        }
     }
 
     public function closeModal(): void
@@ -256,47 +167,29 @@ new class extends Component {
 
 <div>
     <x-modal name="dokumen-registri-actions" size="full" height="full" focusable>
-        <x-dirty-modal-content name="dokumen-registri-actions" event="dokumen.registri.saved" label="Dokumen"
-            :wireKey="$this->renderKey('modal', [$formMode, $originalId])">
-
-            {{-- HEADER --}}
-            <div class="relative px-6 py-5 bg-surface-soft">
-                <div class="relative flex items-start justify-between gap-4">
+        <div class="flex flex-col h-full">
+            <div class="px-6 py-4 border-b bg-surface-soft border-hairline dark:bg-gray-900 dark:border-gray-700">
+                <div class="flex items-start justify-between gap-4">
                     <div>
-                        <h2 class="ds-display-sm dark:text-gray-100">{{ $formMode === 'edit' ? 'Ubah Dokumen' : 'Tambah Dokumen' }}</h2>
-                        <p class="mt-0.5 text-sm text-muted dark:text-gray-400">
-                            Tingkatan & penomoran mengikuti Pedoman Tata Naskah (BAB IV.C, BAB V).
-                        </p>
-                        <div class="mt-3">
-                            <x-badge :variant="$formMode === 'edit' ? 'warning' : 'success'">{{ $formMode === 'edit' ? 'Mode: Edit' : 'Mode: Tambah' }}</x-badge>
-                        </div>
+                        <x-badge variant="brand">{{ $formMode === 'edit' ? 'Ubah' : 'Dokumen baru' }}</x-badge>
+                        <h2 class="mt-2 ds-display-sm dark:text-gray-100">{{ $formMode === 'edit' ? 'Ubah Dokumen' : 'Buat Dokumen' }}</h2>
+                        <p class="text-sm text-muted dark:text-gray-400">Nomor, tanggal terbit dan revisi diisi otomatis.</p>
                     </div>
-                    <x-icon-button color="gray" type="button" x-on:click="tryClose()">
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-                    </x-icon-button>
+                    <x-icon-button color="gray" type="button" wire:click="closeModal">✕</x-icon-button>
                 </div>
             </div>
 
-            {{-- BODY --}}
-            <div class="flex-1 px-4 py-4 space-y-4 bg-surface-soft dark:bg-gray-950/20">
-                @if ($konteksEp !== '')
-                    <div class="px-4 py-3 text-sm border rounded-xl border-brand-green/30 bg-brand-green/5 text-ink dark:text-gray-200 dark:border-brand-lime/30 dark:bg-brand-lime/5">
-                        Ditambahkan ke <b>{{ $konteksEp }}</b> — kaitan akreditasi sudah terisi{{ $form['induk_id'] ? ', induk diusulkan dari regulasi EP ini' : '' }}. Periksa jenis, judul, lalu unggah berkasnya.
-                    </div>
-                @endif
+            <div class="flex-1 px-6 py-5 overflow-y-auto" wire:key="form-{{ $renderVersions['modal'] ?? 0 }}">
                 <x-border-form title="Identitas Dokumen">
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
                         <div>
                             <x-input-label value="Jenis naskah" />
-                            <x-select-input wire:model.live="form.jenis_kode" class="w-full mt-1">
-                                @foreach (DokumenService::jenis()->groupBy('tingkat') as $t => $grup)
-                                    <optgroup label="Tingkat {{ $t }} · {{ DokumenService::TINGKAT[$t] ?? '' }}">
-                                        @foreach ($grup as $j)
-                                            <option value="{{ $j->kode }}">{{ $j->nama }}</option>
-                                        @endforeach
-                                    </optgroup>
+                            <x-select-input wire:model.live="form.jenis_kode" class="w-full mt-1" :disabled="$formMode === 'edit'">
+                                @foreach ($this->jenisBuat as $j)
+                                    <option value="{{ $j->kode }}">{{ $j->nama }}</option>
                                 @endforeach
                             </x-select-input>
+                            <x-input-error :messages="$errors->get('form.jenis_kode')" class="mt-1" />
                         </div>
                         <div class="md:col-span-3">
                             <x-input-label value="Judul" />
@@ -304,136 +197,39 @@ new class extends Component {
                                 placeholder="mis. Penggunaan Kode, Singkatan, dan Simbol dalam Rekam Medis" />
                             <x-input-error :messages="$errors->get('form.dok_judul')" class="mt-1" />
                         </div>
-                        <div class="md:col-span-2">
-                            <livewire:lov.dokumen.lov-dokumen target="dokumen-induk" label="Dokumen induk (lebih tinggi)"
-                                :initialDokId="$form['induk_id']" :maksTingkat="$this->tingkat" :kecualiDokId="$originalId ?: null"
-                                wire:key="lov-induk-{{ $renderVersions['modal'] ?? 0 }}" />
-                            <x-input-error :messages="$errors->get('form.induk_id')" class="mt-1" />
-                        </div>
-                        <div>
-                            <x-input-label value="Bagian / unit (kode nomor)" />
-                            <x-select-input wire:model="form.unit_kode" class="w-full mt-1">
-                                <option value="">—</option>
-                                @foreach (DokumenService::unit() as $u)
-                                    <option value="{{ $u->kode }}">{{ $u->kode }} · {{ $u->nama }}</option>
-                                @endforeach
-                            </x-select-input>
-                        </div>
-                        <div>
-                            <x-input-label value="Klasifikasi keamanan" />
-                            <x-select-input wire:model="form.klasifikasi" class="w-full mt-1">
-                                @foreach (DokumenService::KLASIFIKASI as $k => $nm)
-                                    <option value="{{ $k }}">{{ $nm }}</option>
-                                @endforeach
-                            </x-select-input>
-                        </div>
-                        <div class="md:col-span-4">
-                            <x-input-label value="Ringkasan (opsional)" />
-                            <x-textarea wire:model="ringkasan" rows="2" class="w-full mt-1" />
-                        </div>
-                    </div>
-                </x-border-form>
-
-                <x-border-form title="Penomoran, Revisi & Status">
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-6">
-                        <div class="md:col-span-2">
-                            <x-input-label value="Nomor dokumen" />
-                            <x-text-input wire:model="form.dok_no" class="w-full mt-1 font-mono" placeholder="kosongkan → ambil nomor otomatis di detail" />
-                            <p class="mt-1 text-xs text-muted dark:text-gray-400">
-                                Pola: {{ DokumenService::contohNomor(DokumenService::jenis()[$form['jenis_kode']] ?? (object) ['pola_nomor' => null]) }}
-                            </p>
-                        </div>
-                        <div>
-                            <x-input-label value="Tanggal terbit" />
-                            <x-text-input type="date" wire:model="form.tgl_terbit" class="w-full mt-1" />
-                        </div>
-                        <div>
-                            <x-input-label value="No. revisi" />
-                            <x-select-input wire:model="form.no_revisi" class="w-full mt-1">
-                                @for ($r = 0; $r <= config('dokumen.revisi_maks'); $r++)
-                                    <option value="{{ $r }}">{{ $r }}</option>
-                                @endfor
-                            </x-select-input>
-                        </div>
-                        <div>
-                            <x-input-label value="Status" />
-                            <x-select-input wire:model="form.status" class="w-full mt-1">
-                                @foreach (DokumenService::STATUS as $k => $nm)
-                                    <option value="{{ $k }}">{{ $nm }}</option>
-                                @endforeach
-                            </x-select-input>
-                        </div>
-                        <div>
-                            <x-input-label value="Kaji ulang" />
-                            <x-text-input type="date" wire:model="form.tgl_kaji_ulang" class="w-full mt-1" />
-                        </div>
-                    </div>
-                </x-border-form>
-
-                <x-border-form title="Kaitan Akreditasi (Std KEMKES 2024)">
-                    <div class="space-y-2">
-                        @foreach ($akreditasi as $i => $ak)
-                            <div class="grid items-end grid-cols-12 gap-2" wire:key="ak-{{ $i }}">
-                                <div class="col-span-3">
-                                    <x-select-input wire:model="akreditasi.{{ $i }}.bab" class="w-full" :error="$errors->has('akreditasi.' . $i . '.bab')">
-                                        <option value="">Bab…</option>
-                                        @foreach (config('dokumen.pokja') as $k => $nm)
-                                            <option value="{{ $k }}">{{ $k }} · {{ $nm }}</option>
-                                        @endforeach
-                                    </x-select-input>
-                                </div>
-                                <div class="col-span-3"><x-text-input wire:model="akreditasi.{{ $i }}.standar" class="w-full" placeholder="Standar, mis. MRMIK 9" /></div>
-                                <div class="col-span-2"><x-text-input wire:model="akreditasi.{{ $i }}.ep" class="w-full" placeholder="EP, mis. a" /></div>
-                                <div class="col-span-3">
-                                    <x-select-input wire:model="akreditasi.{{ $i }}.elemen" class="w-full">
-                                        <option value="">Elemen bukti…</option>
-                                        @foreach (['R' => 'R · Regulasi', 'D' => 'D · Dokumen', 'O' => 'O · Observasi', 'W' => 'W · Wawancara', 'S' => 'S · Simulasi'] as $k => $nm)
-                                            <option value="{{ $k }}">{{ $nm }}</option>
-                                        @endforeach
-                                    </x-select-input>
-                                </div>
-                                <div class="col-span-1 text-right">
-                                    <x-icon-button color="red" type="button" wire:click="hapusAkreditasi({{ $i }})" title="Hapus">✕</x-icon-button>
-                                </div>
+                        @if ($this->jenisTerpilih?->pakai_unit === 'Y')
+                            <div>
+                                <x-input-label value="Bagian" />
+                                <x-select-input wire:model="form.unit_kode" class="w-full mt-1">
+                                    <option value="">—</option>
+                                    @foreach (DokumenService::unit() as $u)
+                                        <option value="{{ $u->kode }}">{{ $u->kode }} · {{ $u->nama }}</option>
+                                    @endforeach
+                                </x-select-input>
+                                <x-input-error :messages="$errors->get('form.unit_kode')" class="mt-1" />
                             </div>
-                        @endforeach
-                        <x-secondary-button type="button" wire:click="tambahAkreditasi">+ Kaitan EP</x-secondary-button>
-                    </div>
-                </x-border-form>
-
-                <x-border-form title="Berkas">
-                    <div class="space-y-3">
-                        @forelse ($berkas as $b)
-                            <div class="flex items-center justify-between gap-3 px-3 py-2 text-sm border rounded-lg border-hairline dark:border-gray-700" wire:key="bk-{{ $b['id'] }}">
-                                <div class="min-w-0">
-                                    <div class="font-medium truncate">{{ $b['nama'] }}</div>
-                                    <div class="text-xs text-muted">{{ $b['peran'] }} · {{ $b['lokasi'] === 'impor' ? 'arsip akreditasi' : 'unggahan' }} · {{ number_format(($b['ukuran'] ?? 0) / 1024, 0, ',', '.') }} KB</div>
-                                </div>
-                                <x-icon-button color="red" type="button" wire:click="hapusBerkas('{{ $b['id'] }}')" title="Lepas dari dokumen">✕</x-icon-button>
+                        @endif
+                        @if ($this->jenisTerpilih?->model_nomor === 'INDUK')
+                            <div class="md:col-span-2">
+                                <livewire:lov.dokumen.lov-dokumen target="dokumen-induk" label="SK / Peraturan Direktur penetapnya"
+                                    :initialDokId="$form['induk_id']" :maksTingkat="1" :kecualiDokId="$originalId ?: null"
+                                    wire:key="lov-induk-{{ $renderVersions['modal'] ?? 0 }}-{{ $form['jenis_kode'] }}" />
+                                <p class="mt-1 text-xs text-muted dark:text-gray-400">Nomor {{ strtolower($this->jenisTerpilih->nama) }} mengikuti nomor SK ini. Boleh diisi nanti.</p>
+                                <x-input-error :messages="$errors->get('form.induk_id')" class="mt-1" />
                             </div>
-                        @empty
-                            <p class="text-sm text-muted">Belum ada berkas.</p>
-                        @endforelse
-                        <div>
-                            <x-input-label value="Unggah berkas (PDF / Word / Excel / gambar, maks. 20 MB)" />
-                            <input type="file" wire:model="unggahan" class="block w-full mt-1 text-sm" />
-                            <div wire:loading wire:target="unggahan" class="mt-1 text-xs text-muted">Mengunggah…</div>
-                            <x-input-error :messages="$errors->get('unggahan')" class="mt-1" />
-                        </div>
+                        @endif
                     </div>
                 </x-border-form>
             </div>
 
-            {{-- FOOTER --}}
-            <div class="sticky bottom-0 z-10 px-6 py-4 mt-auto border-t bg-surface-soft border-hairline dark:bg-gray-900 dark:border-gray-700">
+            <div class="sticky bottom-0 z-10 px-6 py-4 border-t bg-surface-soft border-hairline shrink-0 dark:bg-gray-900 dark:border-gray-700">
                 <div class="flex justify-end gap-2">
-                    <x-secondary-button type="button" x-on:click="tryClose()">Batal</x-secondary-button>
+                    <x-secondary-button type="button" wire:click="closeModal">Batal</x-secondary-button>
                     <x-primary-button type="button" wire:click="save" wire:loading.attr="disabled">
-                        <span wire:loading.remove wire:target="save">Simpan</span>
-                        <span wire:loading wire:target="save">Menyimpan…</span>
+                        {{ $formMode === 'edit' ? 'Simpan' : 'Buat & Susun Isi' }}
                     </x-primary-button>
                 </div>
             </div>
-        </x-dirty-modal-content>
+        </div>
     </x-modal>
 </div>

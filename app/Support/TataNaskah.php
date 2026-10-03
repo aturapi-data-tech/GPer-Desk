@@ -15,6 +15,8 @@ use App\Services\DokumenService;
  *  keputusan  Keputusan/Kebijakan Direktur (hal. 29–31): sama, batang tubuh berupa diktum KESATU, KEDUA…
  *  bab        Pedoman / Panduan / Program Kerja (hal. 15–22): lampiran Perdir, BAB → sub A., B., …
  *  edaran     Surat Edaran (hal. 27–29): kepala · Yth · isi · kaki · tembusan
+ *  undangan   Surat Undangan (hal. 40–41): nomor · sifat · lampiran · hal · Yth · pembuka · acara (hari, tanggal,
+ *             waktu, tempat, acara) · penutup · kaki · tembusan
  *  spo        SPO (hal. 24–26) — isi.spo, penyusun tersendiri
  */
 class TataNaskah
@@ -27,6 +29,7 @@ class TataNaskah
         'PAN' => 'bab',
         'PROG' => 'bab',
         'SE' => 'edaran',
+        'UND' => 'undangan',
         'SPO' => 'spo',
     ];
     // Jenis lain (laporan, notulen, daftar hadir, sertifikat, surat, formulir, bukti, eksternal) → 'umum':
@@ -164,6 +167,14 @@ class TataNaskah
                         'penyusun' => ['jabatan' => 'Kepala Unit …,', 'nama' => '']]
                     : $kaki,
             ],
+            'undangan' => [
+                'format' => 'undangan', 'sifat' => 'Biasa', 'lampiran' => '-', 'hal' => 'Undangan ' . $judul,
+                'yth' => ['Seluruh Kepala Unit/Instalasi RSUI Madinah', 'di Tempat'],
+                'pembuka' => '<p>Dengan hormat, mengharap kehadiran Bapak/Ibu pada:</p>',
+                'acara' => ['hari' => '', 'tanggal' => '', 'waktu' => '', 'tempat' => '', 'acara' => $judul],
+                'penutup' => '<p>Demikian undangan ini kami sampaikan. Atas perhatian dan kehadirannya kami ucapkan terima kasih.</p>',
+                'kaki' => $kaki, 'tembusan' => [],
+            ],
             'edaran' => [
                 'format' => 'edaran', 'judulJenis' => 'SURAT EDARAN', 'tentang' => $judulBesar,
                 'yth' => ['Seluruh Kepala Unit/Instalasi RSUI Madinah'], 'isi' => '', 'kaki' => $kaki, 'tembusan' => [],
@@ -175,6 +186,9 @@ class TataNaskah
             ],
         };
     }
+
+    /** Baris isi surat undangan (Pedoman hal. 40): kunci JSON => label. */
+    public const ACARA = ['hari' => 'Hari', 'tanggal' => 'Tanggal', 'waktu' => 'Waktu', 'tempat' => 'Tempat', 'acara' => 'Acara'];
 
     /** Diktum Menetapkan bawaan: "PERATURAN DIREKTUR … TENTANG …". */
     public static function menetapkan(array $n): string

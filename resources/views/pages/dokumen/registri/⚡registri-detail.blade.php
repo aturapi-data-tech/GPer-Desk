@@ -203,7 +203,7 @@ new class extends Component {
                         <div>
                             <x-secondary-button type="button" wire:click="$toggle('pratinjau')">{{ $pratinjau ? 'Sembunyikan pratinjau' : 'Lihat dokumen' }}</x-secondary-button>
                             @if ($pratinjau)
-                                <iframe src="{{ route('dokumen.cetak.pdf', $dok['dok_id']) }}#view=FitH" class="w-full mt-2 border rounded-xl border-hairline" style="height: 70vh" title="Pratinjau dokumen"></iframe>
+                                <iframe src="{{ route('dokumen.cetak.pdf', ['dokId' => $dok['dok_id'], 'v' => strtotime((string) $dok['updated_at']) . '-' . count($json['riwayat'] ?? [])]) }}#view=FitH" class="w-full mt-2 border rounded-xl border-hairline" style="height: 70vh" title="Pratinjau dokumen"></iframe>
                             @endif
                         </div>
                     @endif

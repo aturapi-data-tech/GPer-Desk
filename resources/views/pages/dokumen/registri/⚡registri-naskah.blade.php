@@ -16,6 +16,7 @@ use App\Support\TataNaskah;
  * bab.N.sub.M · kepustakaan · yth · isi · kaki · tembusan
  */
 new class extends Component {
+    public string $judul = '';
     use WithFileUploads;
 
     public $gambarBaru = null;
@@ -45,6 +46,7 @@ new class extends Component {
         $this->dokId = $dokId;
         $this->jenis = (string) $row->jenis_kode;
         $this->nomor = (string) ($row->dok_no ?? '');
+        $this->judul = DokumenService::judul($row, $json);
         $this->n = $json['isi']['naskah'] ?? TataNaskah::kosong($this->jenis, DokumenService::judul($row, $json));
         $this->perluDicek = (bool) ($json['isiSumber']['perluDicek'] ?? false);
         $this->pilih = 'kepala';
@@ -57,7 +59,7 @@ new class extends Component {
     {
         if (in_array($k, self::DAFTAR, true)) return 'daftar';
         if (preg_match('/^blok\.(\d+)$/', $k, $m)) return (($this->n['blok'][(int) $m[1]]['tipe'] ?? 'html') === 'gambar') ? 'gambar' : 'html';
-        if (preg_match('/^(pasal|diktum)\.\d+$|^bab\.\d+(\.sub\.\d+)?$|^(isi|kepustakaan)$/', $k)) return 'html';
+        if (preg_match('/^(pasal|diktum)\.\d+$|^bab\.\d+(\.sub\.\d+)?$|^(isi|kepustakaan|pembuka|penutup)$/', $k)) return 'html';
 
         return 'isian';
     }
@@ -67,7 +69,7 @@ new class extends Component {
         if (preg_match('/^(pasal|diktum)\.(\d+)$/', $k, $m)) return "{$m[1]}.{$m[2]}.isi";
         if (preg_match('/^bab\.(\d+)$/', $k, $m)) return "bab.{$m[1]}.isi";
         if (preg_match('/^bab\.(\d+)\.sub\.(\d+)$/', $k, $m)) return "bab.{$m[1]}.sub.{$m[2]}.isi";
-        if (in_array($k, ['isi', 'kepustakaan'], true)) return $k;
+        if (in_array($k, ['isi', 'kepustakaan', 'pembuka', 'penutup'], true)) return $k;
         if (preg_match('/^blok\.(\d+)$/', $k, $m) && $this->jenisBagian($k) === 'html') return "blok.{$m[1]}.html";
 
         return null;
@@ -90,7 +92,7 @@ new class extends Component {
         if ($this->jenisBagian($k) === 'daftar') {
             $this->n[$k] = array_values(array_filter(array_map('trim', preg_split('/\R/', $this->daftarTeks))));
         } elseif ($j = $this->jalurHtml($k)) {
-            if (data_get($this->n, preg_replace('/\.isi$/', '', $j)) !== null || in_array($j, ['isi', 'kepustakaan'], true)) {
+            if (data_get($this->n, preg_replace('/\.isi$/', '', $j)) !== null || in_array($j, ['isi', 'kepustakaan', 'pembuka', 'penutup'], true)) {
                 data_set($this->n, $j, $this->html);
             }
         }
@@ -225,6 +227,19 @@ new class extends Component {
         $this->dispatch('dokumen-naskah.buka-url', url: $format === 'docx' ? route('dokumen.cetak.docx', $this->dokId) : route('dokumen.cetak.pdf', ['dokId' => $this->dokId, 'unduh' => 1]));
     }
 
+    public function terbitkanNomor(): void
+    {
+        abort_unless(DokumenService::bolehUbah(), 403);
+        try {
+            $this->nomor = DokumenService::ambilNomor((int) $this->dokId);
+        } catch (\DomainException $e) {
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+            return;
+        }
+        $this->dispatch('toast', type: 'success', message: 'Nomor terbit: ' . $this->nomor);
+        $this->dispatch('dokumen.registri.saved');
+    }
+
     public function tutup(): void
     {
         $this->dispatch('close-modal', name: 'dokumen-registri-naskah');
@@ -262,6 +277,11 @@ new class extends Component {
                 $b[] = ["blok.{$i}", $label, 0];
             }
             $b[] = ['+blok', '+ Blok teks', 0];
+        } elseif ($f === 'undangan') {
+            $b[] = ['yth', 'Yth.', 0];
+            $b[] = ['pembuka', 'Alinea pembuka', 0];
+            $b[] = ['acara', 'Isi undangan (hari, tanggal, …)', 0];
+            $b[] = ['penutup', 'Alinea penutup', 0];
         } elseif ($f === 'edaran') {
             $b[] = ['yth', 'Yth.', 0];
             $b[] = ['isi', 'Isi edaran', 0];
@@ -289,12 +309,13 @@ new class extends Component {
                 <div class="flex items-start justify-between gap-4">
                     <div>
                         <div class="flex flex-wrap gap-2">
-                            <x-badge variant="brand">Penyusun naskah · {{ ['peraturan' => 'Peraturan', 'keputusan' => 'Keputusan', 'bab' => 'Pedoman/Panduan/Program', 'edaran' => 'Surat Edaran', 'umum' => 'Dokumen (blok teks & gambar)'][$f] ?? $f }}</x-badge>
+                            <x-badge variant="brand">Penyusun naskah · {{ ['peraturan' => 'Peraturan', 'keputusan' => 'Keputusan', 'bab' => 'Pedoman/Panduan/Program', 'edaran' => 'Surat Edaran', 'undangan' => 'Surat Undangan', 'umum' => 'Dokumen (blok teks & gambar)'][$f] ?? $f }}</x-badge>
                             @if ($perluDicek)
                                 <x-badge variant="warning">Hasil konversi otomatis — periksa lalu simpan</x-badge>
                             @endif
                         </div>
-                        <p class="mt-2 font-mono text-sm text-muted">{{ $nomor ?: 'belum bernomor' }}</p>
+                        <h2 class="mt-2 ds-display-sm dark:text-gray-100">{{ $judul }}</h2>
+                        @include('pages.dokumen.registri.nomor-dokumen', ['dokId' => $dokId, 'nomor' => $nomor])
                     </div>
                     <x-icon-button color="gray" type="button" wire:click="tutup">✕</x-icon-button>
                 </div>
@@ -321,6 +342,14 @@ new class extends Component {
                         @if (in_array($f, ['peraturan', 'keputusan', 'edaran'], true))
                             <div><x-input-label value="Kepala naskah" /><x-text-input wire:model="n.judulJenis" class="w-full mt-1 uppercase" /></div>
                             <div><x-input-label value="Tentang (judul, huruf kapital)" /><x-textarea wire:model="n.tentang" rows="2" class="w-full mt-1 uppercase" /></div>
+                        @endif
+                        @if ($f === 'undangan')
+                            <div class="grid grid-cols-2 gap-4">
+                                <div><x-input-label value="Sifat" /><x-text-input wire:model="n.sifat" class="w-full mt-1" placeholder="Biasa / Segera / Penting" /></div>
+                                <div><x-input-label value="Lampiran" /><x-text-input wire:model="n.lampiran" class="w-full mt-1" placeholder="- / 1 (satu) berkas" /></div>
+                                <div class="col-span-2"><x-input-label value="Hal" /><x-text-input wire:model="n.hal" class="w-full mt-1" /></div>
+                            </div>
+                            <p class="text-xs text-muted">Nomor diisi otomatis (deret Und). Format Pedoman Tata Naskah hal. 40–41.</p>
                         @endif
                         @if (in_array($f, ['peraturan', 'keputusan'], true))
                             <div><x-input-label value="Jabatan pembentuk (diakhiri koma)" /><x-text-input wire:model="n.pembuat" class="w-full mt-1 uppercase" /></div>
@@ -353,6 +382,17 @@ new class extends Component {
                     @elseif ($pilih === 'menetapkan')
                         <x-input-label value="Menetapkan (kosongkan → otomatis: KEPALA NASKAH TENTANG JUDUL.)" />
                         <x-textarea wire:model="n.menetapkan" rows="3" class="w-full mt-1 uppercase" :placeholder="TataNaskah::menetapkan(array_merge($n, ['menetapkan' => '']))" />
+                    @elseif ($pilih === 'acara')
+                        <x-input-label value="Isi undangan — tampil sebagai daftar Hari, Tanggal, Waktu, Tempat, Acara" />
+                        <div class="grid grid-cols-1 gap-3 mt-2 md:grid-cols-2">
+                            @foreach (TataNaskah::ACARA as $ka => $la)
+                                <div class="{{ $ka === 'acara' ? 'md:col-span-2' : '' }}">
+                                    <x-input-label :value="$la" />
+                                    <x-text-input wire:model="n.acara.{{ $ka }}" class="w-full mt-1"
+                                        :placeholder="['hari' => 'Senin', 'tanggal' => '12 Oktober 2026', 'waktu' => '09.00 WIB - selesai', 'tempat' => 'Ruang Rapat Lantai 2', 'acara' => 'Rapat koordinasi …'][$ka]" />
+                                </div>
+                            @endforeach
+                        </div>
                     @elseif ($pilih === 'kaki')
                         @if (isset($n['kaki']['mengetahui']))
                             <div class="grid grid-cols-2 gap-4">

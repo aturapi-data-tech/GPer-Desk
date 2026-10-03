@@ -3,7 +3,6 @@
 @php
     use App\Services\DokumenService;
     $buka = in_array((int) $row->dok_id, $terbuka, true);
-    $pokja = array_filter(explode(',', (string) $row->pokja));
 @endphp
 <tr wire:key="dok-{{ $row->dok_id }}-{{ $kedalaman }}-{{ $kunci ?? '' }}" class="{{ $kedalaman ? 'bg-surface-soft/40 dark:bg-gray-800/30' : '' }}">
     <td>
@@ -48,28 +47,19 @@
             <div class="mt-1 text-xs text-amber-600">kaji ulang {{ DokumenService::tanggalIndonesia($row->tgl_kaji_ulang) }}</div>
         @endif
     </td>
-    <td>
-        <div class="flex flex-wrap gap-1">
-            @foreach (array_slice($pokja, 0, 4) as $p)
-                <x-badge variant="gray">{{ $p }}</x-badge>
-            @endforeach
-            @if (count($pokja) > 4)
-                <span class="text-xs text-muted">+{{ count($pokja) - 4 }}</span>
-            @endif
-        </div>
-    </td>
     <td class="ds-c">
         <div class="flex justify-center gap-1">
-            <x-lihat-button wire:click="openDetail({{ $row->dok_id }})" title="Lihat" />
             @if ($row->bisa_disusun === 'Y')
-                <x-icon-button color="blue" type="button" wire:click="openSusun({{ $row->dok_id }})" title="Susun isi naskah">
+                <x-icon-button color="blue" type="button" wire:click="openSusun({{ $row->dok_id }})" title="Susun isi">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </x-icon-button>
+                <x-icon-button color="gray" type="button" wire:click="lihatPdf({{ $row->dok_id }})" title="Lihat & unduh PDF">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2zM12 11v6m0 0l-2.5-2.5M12 17l2.5-2.5"/></svg>
                 </x-icon-button>
             @endif
             @if ($bolehUbah)
-                <x-action-edit wire:click="openEdit({{ $row->dok_id }})" />
                 <x-action-delete :action="'requestDelete(' . $row->dok_id . ')'" title="Hapus Dokumen"
-                    message="Hapus {{ $row->dok_judul }} dari registri? Berkas fisik tidak ikut terhapus." />
+                    message="Hapus {{ $row->dok_judul }}? Isi naskahnya ikut terhapus." />
             @endif
         </div>
     </td>

@@ -311,6 +311,47 @@ class DokumenService
         });
     }
 
+    /**
+     * Perkiraan nomor yang AKAN terbit bila nomor diambil sekarang — tanpa menaikkan penghitung.
+     * @return array{nomor: ?string, model: string, catatan: string}
+     */
+    public static function pratinjauNomor(int $dokId): array
+    {
+        $dok = DB::table('dok_dokumen')->where('dok_id', $dokId)->first();
+        $jenis = $dok ? (self::jenis()[$dok->jenis_kode] ?? null) : null;
+        $model = $jenis->model_nomor ?? 'TANPA';
+        if (! $dok || ! self::bisaDinomori($jenis)) {
+            return ['nomor' => null, 'model' => $model, 'catatan' => 'Jenis ini tidak dinomori.'];
+        }
+        $tgl = $dok->tgl_terbit ? Carbon::parse($dok->tgl_terbit) : now();
+
+        if ($model === 'SENDIRI') {
+            $unit = $jenis->pakai_unit === 'Y' ? (string) ($dok->unit_kode ?? '') : '';
+            $tahun = $jenis->reset_tahunan === 'Y' ? (int) $tgl->year : 0;
+            $no = 1 + (int) DB::table('dok_penomoran')
+                ->where(['seri' => $jenis->seri, 'unit_kode' => $unit !== '' ? $unit : '-', 'tahun' => $tahun])->value('no_terakhir');
+
+            return ['nomor' => self::formatNomor($jenis->pola_nomor, $no, (string) $jenis->kode_surat, $unit, $tgl),
+                'model' => $model, 'catatan' => 'Deret ' . $jenis->seri . ($tahun ? " {$tahun}" : ' (menerus)') . ' — nomor urut berikutnya.'];
+        }
+
+        $induk = $dok->induk_id ? DB::table('dok_dokumen')->where('dok_id', $dok->induk_id)->first() : null;
+        if (! $induk || blank($induk->dok_no)) {
+            return ['nomor' => null, 'model' => $model, 'catatan' => $induk
+                ? 'Mengikuti nomor induk — induk belum bernomor.'
+                : 'Mengikuti nomor ' . ($model === 'INDUK' ? 'SK / Peraturan Direktur penetapnya' : 'dokumen induknya') . ' — induk belum ditetapkan.'];
+        }
+        $no = 0;
+        if ($model === 'TURUNAN') {
+            $awalan = self::formatNomor($jenis->pola_nomor, 0, (string) $jenis->kode_surat, '', $tgl, $induk->dok_no, null);
+            $no = 1 + (int) DB::table('dok_dokumen')->where('induk_id', $induk->dok_id)
+                ->where('jenis_kode', $dok->jenis_kode)->where('dok_no', 'like', $awalan . '%')->max('dok_no_urut');
+        }
+
+        return ['nomor' => self::formatNomor($jenis->pola_nomor, $no, (string) $jenis->kode_surat, '', $tgl, $induk->dok_no),
+            'model' => $model, 'catatan' => $model === 'INDUK' ? 'Sama dengan nomor SK penetapnya.' : 'Nomor induk + urutan turunan.'];
+    }
+
     private static function naikkanPenghitung(string $seri, string $unit, int $tahun): int
     {
         $kunci = ['seri' => $seri, 'unit_kode' => $unit, 'tahun' => $tahun];

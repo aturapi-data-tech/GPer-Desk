@@ -81,6 +81,19 @@ new class extends Component {
         $this->dispatch('dokumen-spo.buka-url', url: $url);
     }
 
+    public function terbitkanNomor(): void
+    {
+        abort_unless(DokumenService::bolehUbah(), 403);
+        try {
+            $this->nomor = DokumenService::ambilNomor((int) $this->dokId);
+        } catch (\DomainException $e) {
+            $this->dispatch('toast', type: 'error', message: $e->getMessage());
+            return;
+        }
+        $this->dispatch('toast', type: 'success', message: 'Nomor terbit: ' . $this->nomor);
+        $this->dispatch('dokumen.registri.saved');
+    }
+
     public function tutup(): void
     {
         $this->dispatch('close-modal', name: 'dokumen-registri-spo');
@@ -96,7 +109,7 @@ new class extends Component {
                     <div>
                         <x-badge variant="brand">Penyusun SPO</x-badge>
                         <h2 class="mt-2 ds-display-sm dark:text-gray-100">{{ $judul }}</h2>
-                        <p class="font-mono text-sm text-muted">{{ $nomor ?: 'belum bernomor — ambil nomor di detail dokumen' }}</p>
+                        @include('pages.dokumen.registri.nomor-dokumen', ['dokId' => $dokId, 'nomor' => $nomor])
                     </div>
                     <x-icon-button color="gray" type="button" wire:click="tutup">✕</x-icon-button>
                 </div>
