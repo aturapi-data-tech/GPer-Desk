@@ -47,6 +47,9 @@ new class extends Component {
 
     public function openCreate(?int $indukId = null): void
     {
+        if ($indukId && ! in_array($indukId, $this->terbuka, true)) {
+            $this->terbuka[] = $indukId;               // pohon: buka induk supaya dokumen baru langsung terlihat
+        }
         $this->dispatch('dokumen.registri.openCreate', indukId: $indukId);
     }
 

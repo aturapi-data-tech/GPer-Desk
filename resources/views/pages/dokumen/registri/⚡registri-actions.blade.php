@@ -32,10 +32,24 @@ new class extends Component {
         $this->resetValidation();
     }
 
-    /** Jenis yang bisa dibuat di sini: yang punya penyusun isi. */
+    /** Jenis yang bisa dibuat di sini: yang punya penyusun isi; bila ada induk, hanya yang setingkat/lebih rendah. */
     public function getJenisBuatProperty()
     {
-        return DokumenService::jenis()->where('bisa_disusun', 'Y');
+        $jenis = DokumenService::jenis()->where('bisa_disusun', 'Y');
+        $induk = $this->induk;
+
+        return $induk ? $jenis->filter(fn ($j) => (int) $j->tingkat >= (int) $induk->tingkat) : $jenis;
+    }
+
+    /** Dokumen induk terpilih (judul, nomor, tingkat) — untuk tampilan "Di bawah: …". */
+    public function getIndukProperty(): ?object
+    {
+        if (! $this->form['induk_id']) {
+            return null;
+        }
+
+        return DB::table('dok_dokumen as d')->join('dok_jenis as j', 'j.kode', '=', 'd.jenis_kode')
+            ->where('d.dok_id', $this->form['induk_id'])->first(['d.dok_id', 'd.dok_judul', 'd.dok_no', 'j.nama as jenis_nama', 'j.tingkat']);
     }
 
     public function getJenisTerpilihProperty(): ?object
@@ -51,6 +65,13 @@ new class extends Component {
         $this->formMode = 'create';
         $this->originalId = 0;
         $this->form['induk_id'] = $indukId;
+        if ($indukId && ($induk = $this->induk)) {
+            // jenis bawaan: tepat satu tingkat di bawah induk (SK → Pedoman, Pedoman → SPO); bila tidak ada, yang setingkat
+            $pilihan = $this->jenisBuat;
+            $this->form['jenis_kode'] = (string) ($pilihan->first(fn ($j) => (int) $j->tingkat === (int) $induk->tingkat + 1)?->kode
+                ?? $pilihan->first(fn ($j) => (int) $j->tingkat === (int) $induk->tingkat)?->kode
+                ?? $pilihan->first()?->kode ?? $this->form['jenis_kode']);
+        }
         $this->incrementVersion('modal');
         $this->dispatch('open-modal', name: 'dokumen-registri-actions');
     }
@@ -119,12 +140,11 @@ new class extends Component {
         $header = [
             'jenis_kode' => $this->form['jenis_kode'],
             'dok_judul' => trim($this->form['dok_judul']),
-            'induk_id' => ($jenis?->model_nomor === 'INDUK' ? $this->form['induk_id'] : null) ?: null,
+            'induk_id' => $this->form['induk_id'] ?: null,      // semua jenis boleh berinduk (pohon registri)
             'unit_kode' => ($jenis?->pakai_unit === 'Y' ? $this->form['unit_kode'] : null) ?: null,
         ];
         if ($this->formMode === 'edit') {
             unset($header['jenis_kode']);                  // jenis menentukan format isi — tidak diganti sesudah dibuat
-            if ($jenis?->model_nomor !== 'INDUK') unset($header['induk_id']);
         } else {
             $header += ['status' => 'DRAF', 'no_revisi' => 0, 'klasifikasi' => 'BIASA', 'sumber' => 'INTERNAL'];
         }
@@ -207,6 +227,17 @@ new class extends Component {
                                     @endforeach
                                 </x-select-input>
                                 <x-input-error :messages="$errors->get('form.unit_kode')" class="mt-1" />
+                            </div>
+                        @endif
+                        @if ($this->induk && $this->jenisTerpilih?->model_nomor !== 'INDUK')
+                            <div class="md:col-span-4">
+                                <x-input-label value="Di bawah dokumen" />
+                                <div class="flex items-center gap-2 px-3 py-2 mt-1 text-sm border rounded-lg border-hairline bg-canvas dark:bg-gray-800 dark:border-gray-700">
+                                    <x-badge variant="gray">{{ $this->induk->jenis_nama }}</x-badge>
+                                    <span class="flex-1 font-medium">{{ $this->induk->dok_judul }}</span>
+                                    <span class="font-mono text-xs text-muted">{{ $this->induk->dok_no ?: 'belum bernomor' }}</span>
+                                    <x-icon-button color="gray" type="button" wire:click="hapusInduk" title="Lepas dari induk">✕</x-icon-button>
+                                </div>
                             </div>
                         @endif
                         @if ($this->jenisTerpilih?->model_nomor === 'INDUK')

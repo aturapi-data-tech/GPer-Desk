@@ -48,7 +48,8 @@
         @endif
     </td>
     <td class="ds-c">
-        <div class="flex justify-center gap-1">
+        {{-- urutan: susun · PDF · turunan | (terpisah) hapus — jarak & garis pembatas supaya hapus tidak terklik tak sengaja --}}
+        <div class="flex items-center justify-center gap-1">
             @if ($row->bisa_disusun === 'Y')
                 <x-icon-button color="blue" type="button" wire:click="openSusun({{ $row->dok_id }})" title="Susun isi">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
@@ -58,8 +59,13 @@
                 </x-icon-button>
             @endif
             @if ($bolehUbah)
-                <x-action-delete :action="'requestDelete(' . $row->dok_id . ')'" title="Hapus Dokumen"
-                    message="Hapus {{ $row->dok_judul }}? Isi naskahnya ikut terhapus." />
+                <x-icon-button color="green" type="button" wire:click="openCreate({{ $row->dok_id }})" title="Buat dokumen di bawah {{ $row->dok_judul }}">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+                </x-icon-button>
+                <div class="pl-3 ml-2 border-l border-hairline dark:border-gray-700">
+                    <x-action-delete :action="'requestDelete(' . $row->dok_id . ')'" title="Hapus Dokumen"
+                        message="Hapus {{ $row->dok_judul }}? Isi naskahnya ikut terhapus." />
+                </div>
             @endif
         </div>
     </td>
