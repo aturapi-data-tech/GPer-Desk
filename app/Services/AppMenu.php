@@ -105,6 +105,7 @@ class AppMenu
             $entry(['group' => 'Dokumen Akreditasi', 'groupOrder' => 7, 'order' => 1, 'route' => 'dokumen.registri', 'title' => 'Registri Dokumen', 'desc' => 'Peraturan → Pedoman → SPO → Formulir → Bukti: penomoran Pedoman Tata Naskah, revisi, kaitan EP & penyusun SPO (PDF/DOCX)', 'roles' => ['*'], 'badge' => 'DOK']),
             $entry(['group' => 'Dokumen Akreditasi', 'groupOrder' => 7, 'order' => 2, 'route' => 'dokumen.pengaturan', 'title' => 'Pengaturan Penomoran', 'desc' => 'Jenis naskah, model & pola nomor, singkatan bagian', 'roles' => ['admin', 'manager'], 'badge' => 'NO']),
             $entry(['group' => 'Dokumen Akreditasi', 'groupOrder' => 7, 'order' => 3, 'route' => 'dokumen.ttd-saya', 'title' => 'Tanda Tangan Saya', 'desc' => 'Spesimen tanda tangan untuk menandatangani & mengunci dokumen', 'roles' => ['direktur', 'manager', 'admin'], 'badge' => 'TTD']),
+            $entry(['group' => 'Dokumen Akreditasi', 'groupOrder' => 7, 'order' => 4, 'route' => 'master.organisasi', 'title' => 'Struktur Organisasi', 'desc' => 'Pohon unit & kepala — Perdir 104/SK/PT-AIM/10/2025', 'roles' => ['*'], 'badge' => 'ORG']),
 
             // ── Penawaran ─────────────────────────────────────────────
             $entry(['group' => 'Penawaran', 'groupOrder' => 6, 'order' => 1, 'route' => 'penawaran.perbaikan-siklik', 'title' => 'Proposal SIKLIK', 'desc' => 'Sistem Informasi Klinik — kesiapan piloting rujukan Tulungagung', 'roles' => $masterRoles, 'badge' => 'GPER']),
