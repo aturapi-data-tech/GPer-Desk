@@ -19,6 +19,8 @@ new class extends Component {
     public int $originalId = 0;
     public array $renderVersions = [];
     public array $form = [];
+    /** Tab asal saat dibuka dari toolbar registri: regulasi | surat (null = semua / dari baris). */
+    public ?string $kelompok = null;
 
     public function mount(): void
     {
@@ -37,6 +39,9 @@ new class extends Component {
     {
         $jenis = DokumenService::jenis()->where('bisa_disusun', 'Y');
         $induk = $this->induk;
+        if ($this->kelompok && ! $induk) {
+            $jenis = $jenis->filter(fn ($j) => ($j->kelompok === 'KORESPONDENSI') === ($this->kelompok === 'surat'));
+        }
 
         return $induk ? $jenis->filter(fn ($j) => (int) $j->tingkat >= (int) $induk->tingkat) : $jenis;
     }
@@ -58,13 +63,17 @@ new class extends Component {
     }
 
     #[On('dokumen.registri.openCreate')]
-    public function openCreate(?int $indukId = null): void
+    public function openCreate(?int $indukId = null, ?string $kelompok = null): void
     {
         abort_unless(DokumenService::bolehUbah(), 403);
         $this->resetForm();
         $this->formMode = 'create';
         $this->originalId = 0;
+        $this->kelompok = $kelompok;
         $this->form['induk_id'] = $indukId;
+        if (! $indukId && ! $this->jenisBuat->has($this->form['jenis_kode'])) {
+            $this->form['jenis_kode'] = (string) $this->jenisBuat->keys()->first();   // mis. tab Surat → Surat Edaran
+        }
         if ($indukId && ($induk = $this->induk)) {
             // jenis bawaan: tepat satu tingkat di bawah induk (SK → Pedoman, Pedoman → SPO); bila tidak ada, yang setingkat
             $pilihan = $this->jenisBuat;
@@ -86,6 +95,7 @@ new class extends Component {
         $this->resetForm();
         $this->formMode = 'edit';
         $this->originalId = $dokId;
+        $this->kelompok = null;
         $this->form = [
             'jenis_kode' => $row->jenis_kode, 'dok_judul' => (string) ($json['judulAsli'] ?? $row->dok_judul),
             'induk_id' => $row->induk_id ? (int) $row->induk_id : null, 'unit_kode' => (string) ($row->unit_kode ?? ''),

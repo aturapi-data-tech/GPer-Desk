@@ -22,6 +22,7 @@ new class extends Component {
     public string $filterJenis = '';
     public string $filterStatus = '';
     public string $tampilan = 'pohon';   // pohon (induk → turunan) | daftar
+    public string $kelompok = 'regulasi'; // tab: regulasi | surat (DOK_JENIS.KELOMPOK = KORESPONDENSI)
     public int $itemsPerPage = 15;
     /** @var int[] simpul pohon yang dibuka */
     public array $terbuka = [];
@@ -33,7 +34,8 @@ new class extends Component {
 
     public function updated($prop): void
     {
-        if (in_array($prop, ['searchKeyword', 'filterJenis', 'filterStatus', 'itemsPerPage', 'tampilan'], true)) {
+        if (in_array($prop, ['searchKeyword', 'filterJenis', 'filterStatus', 'itemsPerPage', 'tampilan', 'kelompok'], true)) {
+            if ($prop === 'kelompok') $this->filterJenis = '';
             $this->resetPage();
         }
     }
@@ -50,7 +52,8 @@ new class extends Component {
         if ($indukId && ! in_array($indukId, $this->terbuka, true)) {
             $this->terbuka[] = $indukId;               // pohon: buka induk supaya dokumen baru langsung terlihat
         }
-        $this->dispatch('dokumen.registri.openCreate', indukId: $indukId);
+        // dari toolbar: jenis yang ditawarkan mengikuti tab aktif; dari baris (+): mengikuti induk
+        $this->dispatch('dokumen.registri.openCreate', indukId: $indukId, kelompok: $indukId ? null : $this->kelompok);
     }
 
     public function openEdit(int $dokId): void { $this->dispatch('dokumen.registri.openEdit', dokId: $dokId); }
@@ -92,7 +95,7 @@ new class extends Component {
     #[On('dokumen.registri.saved')]
     public function refreshAfterSaved(): void
     {
-        unset($this->rows);
+        unset($this->rows, $this->jumlahTab);
     }
 
     private function dasar()
@@ -113,6 +116,7 @@ new class extends Component {
             $q->where(fn ($w) => $w->whereRaw('UPPER(dk.dok_judul) LIKE ?', ["%{$kw}%"])
                 ->orWhereRaw('UPPER(dk.dok_no) LIKE ?', ["%{$kw}%"]));
         }
+        $this->kelompok === 'surat' ? $q->where('dj.kelompok', 'KORESPONDENSI') : $q->where('dj.kelompok', '<>', 'KORESPONDENSI');
         if ($this->filterJenis !== '') $q->where('dk.jenis_kode', $this->filterJenis);
         if ($this->filterStatus !== '') $q->where('dk.status', $this->filterStatus);
 
@@ -129,13 +133,30 @@ new class extends Component {
     public function rows()
     {
         $q = $this->saring($this->dasar());
-        // Pohon tanpa saringan: mulai dari akar (dokumen tanpa induk); dengan saringan tampil rata
-        if ($this->tampilan === 'pohon' && ! $this->adaSaringan()) {
+        // Pohon tanpa saringan: mulai dari akar (dokumen tanpa induk); dengan saringan tampil rata.
+        // Tab Surat selalu rata — surat berinduk regulasi tetap tampil di tabnya sendiri.
+        if ($this->tampilan === 'pohon' && $this->kelompok !== 'surat' && ! $this->adaSaringan()) {
             $q->whereNull('dk.induk_id');
+        }
+
+        if ($this->kelompok === 'surat') {
+            // surat: terbaru di atas; yang belum terbit (draf tanpa tanggal) paling atas, urut dibuat terbaru
+            return $q->orderByRaw('dk.tgl_terbit DESC NULLS FIRST')->orderBy('dk.created_at', 'desc')->paginate($this->itemsPerPage);
         }
 
         return $q->orderBy('dj.tingkat')->orderBy('dj.urut')->orderByRaw('dk.dok_no_urut NULLS LAST')
             ->orderBy('dk.dok_judul')->paginate($this->itemsPerPage);
+    }
+
+    /** Jumlah dokumen per tab. */
+    #[Computed]
+    public function jumlahTab(): array
+    {
+        $r = DB::selectOne("SELECT SUM(CASE WHEN j.kelompok = 'KORESPONDENSI' THEN 1 ELSE 0 END) surat,
+                SUM(CASE WHEN j.kelompok <> 'KORESPONDENSI' THEN 1 ELSE 0 END) regulasi
+            FROM dok_dokumen d JOIN dok_jenis j ON j.kode = d.jenis_kode");
+
+        return ['regulasi' => (int) $r->regulasi, 'surat' => (int) $r->surat];
     }
 
     /** Turunan simpul yang dibuka (pohon) — dikelompokkan per induk. */
@@ -160,6 +181,10 @@ new class extends Component {
 
             {{-- TOOLBAR --}}
             <div class="sticky z-30 px-4 py-3 border-b bg-surface-soft border-hairline top-20 dark:bg-gray-900 dark:border-gray-700">
+                <x-tabs variant="pill" class="mb-3">
+                    <x-tab :active="$kelompok === 'regulasi'" wire:click="$set('kelompok', 'regulasi')">Regulasi <span class="ml-1 text-xs opacity-70">({{ $this->jumlahTab['regulasi'] }})</span></x-tab>
+                    <x-tab :active="$kelompok === 'surat'" wire:click="$set('kelompok', 'surat')">Surat <span class="ml-1 text-xs opacity-70">({{ $this->jumlahTab['surat'] }})</span></x-tab>
+                </x-tabs>
                 <div class="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
                     <div class="grid flex-1 grid-cols-2 gap-2 md:grid-cols-4">
                         <div class="col-span-2">
@@ -168,7 +193,7 @@ new class extends Component {
                         </div>
                         <x-select-input wire:model.live="filterJenis">
                             <option value="">Semua jenis</option>
-                            @foreach (DokumenService::jenis()->where('bisa_disusun', 'Y') as $j)
+                            @foreach (DokumenService::jenis()->where('bisa_disusun', 'Y')->filter(fn ($j) => ($j->kelompok === 'KORESPONDENSI') === ($kelompok === 'surat')) as $j)
                                 <option value="{{ $j->kode }}">{{ $j->nama }}</option>
                             @endforeach
                         </x-select-input>
@@ -193,12 +218,12 @@ new class extends Component {
                             </x-select-input>
                         </div>
                         @if (DokumenService::bolehUbah())
-                            <x-primary-button type="button" wire:click="openCreate">+ Buat Dokumen</x-primary-button>
+                            <x-primary-button type="button" wire:click="openCreate">+ Buat {{ $kelompok === 'surat' ? 'Surat' : 'Dokumen' }}</x-primary-button>
                         @endif
                         <x-toolbar-refresh-reset :label="null" />
                     </div>
                 </div>
-                @if ($tampilan === 'pohon')
+                @if ($tampilan === 'pohon' && $kelompok !== 'surat')
                     <p class="mt-2 text-xs text-muted dark:text-gray-400">
                         Pohon dimulai dari dokumen tanpa induk (tingkat tertinggi). Klik ▸ untuk membuka turunannya.
                         Dengan saringan aktif, hasil ditampilkan rata.

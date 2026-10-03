@@ -27,3 +27,7 @@ COMMIT;
 -- Surat Undangan punya penyusun (format 'undangan', Pedoman hal. 40–41) — muncul di form Buat Dokumen.
 UPDATE DOK_JENIS SET BISA_DISUSUN = 'Y' WHERE KODE = 'UND';
 COMMIT;
+
+-- Registri dipisah tab Regulasi | Surat menurut KELOMPOK: Surat Edaran masuk kelompok surat (korespondensi).
+UPDATE DOK_JENIS SET KELOMPOK = 'KORESPONDENSI' WHERE KODE = 'SE';
+COMMIT;
